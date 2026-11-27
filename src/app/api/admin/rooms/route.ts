@@ -18,6 +18,7 @@ const bulkCreateSchema = z.object({
     .min(1)
     .max(500),
   amenity_ids: z.array(z.string().uuid()).optional().default([]),
+  skip_existing: z.boolean().optional().default(true),
 });
 
 const bulkPatchSchema = z.object({
@@ -101,13 +102,21 @@ export async function POST(request: NextRequest) {
     note: r.note ?? "",
   }));
 
-  const { data: insertedRooms, error } = await supabase
-    .from("rooms")
-    .insert(rows)
-    .select("id, room_code");
+  const query = parsed.data.skip_existing
+    ? supabase
+        .from("rooms")
+        .upsert(rows, { onConflict: "room_code", ignoreDuplicates: true })
+        .select("id, room_code")
+    : supabase.from("rooms").insert(rows).select("id, room_code");
+
+  const { data: insertedRooms, error } = await query;
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    const msg =
+      error.code === "23505"
+        ? "Một hoặc nhiều mã phòng đã tồn tại trong hệ thống. Vui lòng kiểm tra lại."
+        : error.message;
+    return NextResponse.json({ error: msg }, { status: 400 });
   }
 
   if (parsed.data.amenity_ids.length > 0 && insertedRooms && insertedRooms.length > 0) {

@@ -2,14 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Check,
   ChevronDown,
   ChevronRight,
   Lock,
+  Pencil,
   Plus,
   Search,
   Sparkles,
   Trash2,
   Unlock,
+  X,
 } from "lucide-react";
 import type { Amenity, Building, PublicRoom } from "@/lib/types";
 import { BulkRoomGeneratorModal } from "@/components/admin/BulkRoomGeneratorModal";
@@ -30,13 +33,18 @@ export default function AdminRoomsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const [modalBuildingId, setModalBuildingId] = useState<string | undefined>(undefined);
   const [drawerRoom, setDrawerRoom] = useState<PublicRoom | null>(null);
 
   // Master Data forms
   const [bCode, setBCode] = useState("");
   const [bName, setBName] = useState("");
-  const [bSort, setBSort] = useState(0);
+  const [bSort, setBSort] = useState(1);
   const [aName, setAName] = useState("");
+  const [masterError, setMasterError] = useState<string | null>(null);
+  const [editingBuildingId, setEditingBuildingId] = useState<string | null>(null);
+  const [editBName, setEditBName] = useState("");
+  const [editBSort, setEditBSort] = useState(1);
 
   // Bulk Action inputs
   const [bulkPrice, setBulkPrice] = useState("");
@@ -48,9 +56,11 @@ export default function AdminRoomsPage() {
     const res = await fetch("/api/admin/rooms");
     if (res.ok) {
       const json = await res.json();
-      setBuildings(json.buildings ?? []);
+      const bList = json.buildings ?? [];
+      setBuildings(bList);
       setAmenities(json.amenities ?? []);
       setRooms(json.rooms ?? []);
+      setBSort(bList.length + 1);
     }
     setLoading(false);
   }, []);
@@ -168,6 +178,7 @@ export default function AdminRoomsPage() {
   async function handleCreateBuilding(e: React.FormEvent) {
     e.preventDefault();
     if (!bCode.trim() || !bName.trim()) return;
+    setMasterError(null);
     const res = await fetch("/api/admin/buildings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -177,6 +188,26 @@ export default function AdminRoomsPage() {
       setBCode("");
       setBName("");
       await loadData();
+    } else {
+      const j = await res.json().catch(() => ({}));
+      setMasterError(j.error ?? "Không thể thêm tòa nhà (có thể mã tòa đã tồn tại).");
+    }
+  }
+
+  async function handleSaveBuildingEdit(id: string) {
+    if (!editBName.trim()) return;
+    setMasterError(null);
+    const res = await fetch("/api/admin/buildings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, name: editBName.trim(), sort_order: editBSort }),
+    });
+    if (res.ok) {
+      setEditingBuildingId(null);
+      await loadData();
+    } else {
+      const j = await res.json().catch(() => ({}));
+      setMasterError(j.error ?? "Không thể cập nhật tòa nhà.");
     }
   }
 
@@ -186,18 +217,26 @@ export default function AdminRoomsPage() {
     await loadData();
   }
 
-  async function handleCreateAmenity(e: React.FormEvent) {
-    e.preventDefault();
-    if (!aName.trim()) return;
+  async function createAmenityByName(name: string) {
+    if (!name.trim()) return;
+    setMasterError(null);
     const res = await fetch("/api/admin/amenities", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: aName.trim() }),
+      body: JSON.stringify({ name: name.trim() }),
     });
     if (res.ok) {
       setAName("");
       await loadData();
+    } else {
+      const j = await res.json().catch(() => ({}));
+      setMasterError(j.error ?? "Không thể thêm tiện ích.");
     }
+  }
+
+  async function handleCreateAmenity(e: React.FormEvent) {
+    e.preventDefault();
+    await createAmenityByName(aName);
   }
 
   async function handleDeleteAmenity(id: string) {
@@ -244,11 +283,14 @@ export default function AdminRoomsPage() {
           <button
             type="button"
             disabled={buildings.length === 0}
-            onClick={() => setShowBulkModal(true)}
+            onClick={() => {
+              setModalBuildingId(undefined);
+              setShowBulkModal(true);
+            }}
             className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:bg-slate-400"
           >
             <Sparkles className="h-4 w-4" />
-            Tạo phòng hàng loạt
+            Thêm / Tạo phòng
           </button>
         </div>
       </div>
@@ -625,112 +667,244 @@ export default function AdminRoomsPage() {
         </>
       ) : (
         /* Master Data Tab */
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="space-y-4">
+          {masterError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+              {masterError}
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Buildings */}
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-            <h2 className="text-base font-bold text-slate-900">Danh mục Tòa nhà / Dãy</h2>
-            <form onSubmit={handleCreateBuilding} className="grid grid-cols-3 gap-2">
-              <input
-                type="text"
-                required
-                value={bCode}
-                onChange={(e) => setBCode(e.target.value)}
-                placeholder="Mã (VD: D10)"
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm uppercase"
-              />
-              <input
-                type="text"
-                required
-                value={bName}
-                onChange={(e) => setBName(e.target.value)}
-                placeholder="Tên (VD: Nhà D10)"
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-              <div className="flex gap-1">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Danh mục Tòa nhà / Dãy</h2>
+              <p className="text-xs text-slate-600">
+                Bước 1: Tạo tòa nhà → Bước 2: Bấm &quot;+ Tạo phòng&quot; ngay trên tòa nhà đó.
+              </p>
+            </div>
+            <form onSubmit={handleCreateBuilding} className="grid grid-cols-1 gap-2.5 sm:grid-cols-12 items-end">
+              <div className="sm:col-span-3">
+                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                  Mã tòa <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={bCode}
+                  onChange={(e) => setBCode(e.target.value)}
+                  placeholder="VD: D10"
+                  className="min-h-[40px] w-full rounded-lg border border-slate-300 px-3 text-sm uppercase"
+                />
+              </div>
+              <div className="sm:col-span-4">
+                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                  Tên tòa nhà <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={bName}
+                  onChange={(e) => setBName(e.target.value)}
+                  placeholder="VD: Nhà D10"
+                  className="min-h-[40px] w-full rounded-lg border border-slate-300 px-3 text-sm"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label
+                  className="mb-1 block text-xs font-semibold text-slate-700"
+                  title="Số nhỏ sẽ xếp lên trước trên trang sinh viên"
+                >
+                  Thứ tự
+                </label>
                 <input
                   type="number"
+                  min={1}
                   value={bSort}
                   onChange={(e) => setBSort(Number(e.target.value))}
-                  placeholder="STT"
-                  className="w-16 rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                  className="min-h-[40px] w-full rounded-lg border border-slate-300 px-2.5 text-sm"
                 />
+              </div>
+              <div className="sm:col-span-3">
                 <button
                   type="submit"
-                  className="flex flex-1 items-center justify-center rounded-lg bg-blue-600 text-white"
+                  className="flex min-h-[40px] w-full items-center justify-center gap-1 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700"
                 >
-                  <Plus className="h-4 w-4" />
+                  <Plus className="h-4 w-4" /> Thêm tòa
                 </button>
               </div>
             </form>
 
             <ul className="divide-y divide-slate-100">
-              {buildings.map((b) => (
-                <li key={b.id} className="flex items-center justify-between py-2.5 text-sm">
-                  <div>
-                    <span className="font-bold text-slate-900">{b.code}</span> — {b.name}{" "}
-                    <span className="text-xs text-slate-400">(STT: {b.sort_order})</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleBuildingLock(b)}
-                      className={cn(
-                        "rounded px-2 py-1 text-xs font-semibold",
-                        b.is_locked ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
-                      )}
-                    >
-                      {b.is_locked ? "Đang khóa" : "Đang mở"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteBuilding(b.id)}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </li>
-              ))}
+              {buildings.map((b) => {
+                const countInBuilding = rooms.filter((r) => r.building_id === b.id).length;
+                const isEditing = editingBuildingId === b.id;
+                return (
+                  <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+                    {isEditing ? (
+                      <div className="flex flex-1 flex-wrap items-center gap-2">
+                        <span className="font-bold text-slate-900">{b.code}</span>
+                        <input
+                          type="text"
+                          value={editBName}
+                          onChange={(e) => setEditBName(e.target.value)}
+                          className="rounded-lg border border-slate-300 px-2.5 py-1 text-sm"
+                        />
+                        <input
+                          type="number"
+                          min={1}
+                          value={editBSort}
+                          onChange={(e) => setEditBSort(Number(e.target.value))}
+                          className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSaveBuildingEdit(b.id)}
+                          className="rounded-lg bg-emerald-600 p-1.5 text-white"
+                          title="Lưu"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingBuildingId(null)}
+                          className="rounded-lg bg-slate-200 p-1.5 text-slate-700"
+                          title="Hủy"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="font-bold text-slate-900">{b.code}</span> — {b.name}{" "}
+                        <span className="text-xs font-medium text-slate-600">
+                          • {countInBuilding} phòng • Thứ tự #{b.sort_order}
+                        </span>
+                      </div>
+                    )}
+
+                    {!isEditing && (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModalBuildingId(b.id);
+                            setShowBulkModal(true);
+                          }}
+                          className="flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                        >
+                          <Plus className="h-3.5 w-3.5" /> Tạo phòng
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingBuildingId(b.id);
+                            setEditBName(b.name);
+                            setEditBSort(b.sort_order);
+                          }}
+                          className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100"
+                          title="Sửa tên / thứ tự"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleBuildingLock(b)}
+                          className={cn(
+                            "rounded-lg px-2.5 py-1 text-xs font-semibold",
+                            b.is_locked ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
+                          )}
+                        >
+                          {b.is_locked ? "Đang khóa" : "Đang mở"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteBuilding(b.id)}
+                          className="rounded-lg p-1.5 text-red-500 hover:bg-red-50"
+                          title="Xóa tòa"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
 
           {/* Amenities */}
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-            <h2 className="text-base font-bold text-slate-900">Danh mục Tiện ích</h2>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Danh mục Tiện ích</h2>
+              <p className="text-xs text-slate-600">
+                Các nhãn tiện ích để gắn cho phòng và giúp sinh viên lọc phòng.
+              </p>
+            </div>
             <form onSubmit={handleCreateAmenity} className="flex gap-2">
               <input
                 type="text"
                 required
                 value={aName}
                 onChange={(e) => setAName(e.target.value)}
-                placeholder="VD: Điều hòa, Nóng lạnh, Khép kín..."
-                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Nhập tên tiện ích mới..."
+                className="min-h-[40px] flex-1 rounded-lg border border-slate-300 px-3 text-sm"
               />
               <button
                 type="submit"
-                className="flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white"
+                className="flex min-h-[40px] items-center gap-1 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-700"
               >
                 <Plus className="h-4 w-4" /> Thêm
               </button>
             </form>
 
-            <div className="flex flex-wrap gap-2">
+            {/* Quick Suggestions */}
+            {(() => {
+              const existingNames = new Set(amenities.map((a) => a.name.toLowerCase()));
+              const suggestions = [
+                "Điều hòa",
+                "Nóng lạnh",
+                "Khép kín",
+                "Giường tầng",
+                "Wifi",
+                "Tủ cá nhân",
+              ].filter((s) => !existingNames.has(s.toLowerCase()));
+              if (suggestions.length === 0) return null;
+              return (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-medium text-slate-600">Gợi ý thêm nhanh:</span>
+                  {suggestions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => createAmenityByName(s)}
+                      className="rounded-full border border-dashed border-blue-400 bg-blue-50/60 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                    >
+                      + {s}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+
+            <div className="flex flex-wrap gap-2 pt-1">
               {amenities.map((a) => (
                 <span
                   key={a.id}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-800"
                 >
                   {a.name}
                   <button
                     type="button"
                     onClick={() => handleDeleteAmenity(a.id)}
-                    className="text-slate-400 hover:text-red-600"
+                    className="text-slate-500 hover:text-red-600"
+                    title="Xóa tiện ích"
                   >
                     ×
                   </button>
                 </span>
               ))}
             </div>
+          </div>
           </div>
         </div>
       )}
@@ -739,7 +913,11 @@ export default function AdminRoomsPage() {
         <BulkRoomGeneratorModal
           buildings={buildings}
           amenities={amenities}
-          onClose={() => setShowBulkModal(false)}
+          initialBuildingId={modalBuildingId}
+          onClose={() => {
+            setShowBulkModal(false);
+            setModalBuildingId(undefined);
+          }}
           onCreated={loadData}
         />
       )}

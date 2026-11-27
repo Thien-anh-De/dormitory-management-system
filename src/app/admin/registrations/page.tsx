@@ -345,8 +345,8 @@ export default function AdminRegistrationsPage() {
             Không có đơn đăng ký nào khớp bộ lọc.
           </div>
         ) : (
-          <table className="w-full text-left text-xs">
-            <thead className="border-b border-slate-200 bg-slate-50 font-semibold uppercase text-slate-600">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase text-slate-700">
               <tr>
                 <th className="px-3 py-3">
                   <input

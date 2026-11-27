@@ -25,6 +25,7 @@ export default function AdminRoomsPage() {
 
   const [search, setSearch] = useState("");
   const [buildingFilter, setBuildingFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "AVAILABLE" | "FULL" | "OVER" | "LOCKED">("ALL");
   const [collapsedFloors, setCollapsedFloors] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -58,14 +59,45 @@ export default function AdminRoomsPage() {
     loadData();
   }, [loadData]);
 
+  const buildingLockedMap = useMemo(
+    () => new Map(buildings.map((b) => [b.id, b.is_locked])),
+    [buildings]
+  );
+
+  const roomCounts = useMemo(() => {
+    let available = 0;
+    let full = 0;
+    let over = 0;
+    let locked = 0;
+    for (const r of rooms) {
+      const bLocked = buildingLockedMap.get(r.building_id) ?? false;
+      if (bLocked || r.is_locked || r.capacity === 0) locked++;
+      else if (r.current_count > r.capacity) over++;
+      else if (r.current_count === r.capacity) full++;
+      else available++;
+    }
+    return { total: rooms.length, available, full, over, locked };
+  }, [rooms, buildingLockedMap]);
+
   const filteredRooms = useMemo(() => {
     const kw = search.trim().toLowerCase();
     return rooms.filter((r) => {
       if (buildingFilter !== "ALL" && r.building_id !== buildingFilter) return false;
       if (kw && !r.room_code.toLowerCase().includes(kw)) return false;
+      if (statusFilter !== "ALL") {
+        const bLocked = buildingLockedMap.get(r.building_id) ?? false;
+        const isLocked = bLocked || r.is_locked || r.capacity === 0;
+        const isOver = !isLocked && r.current_count > r.capacity;
+        const isFull = !isLocked && r.current_count === r.capacity;
+        const isAvail = !isLocked && r.current_count < r.capacity;
+        if (statusFilter === "LOCKED" && !isLocked) return false;
+        if (statusFilter === "OVER" && !isOver) return false;
+        if (statusFilter === "FULL" && !isFull) return false;
+        if (statusFilter === "AVAILABLE" && !isAvail) return false;
+      }
       return true;
     });
-  }, [rooms, search, buildingFilter]);
+  }, [rooms, search, buildingFilter, statusFilter, buildingLockedMap]);
 
   const grouped = useMemo(() => {
     const byB = new Map<string, Map<number, PublicRoom[]>>();
@@ -223,24 +255,49 @@ export default function AdminRoomsPage() {
 
       {tab === "GRID" ? (
         <>
+          {/* Quick Status Strip */}
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+            {[
+              { key: "ALL", label: "Tổng số phòng", count: roomCounts.total, cls: "border-slate-200 bg-white text-slate-900" },
+              { key: "AVAILABLE", label: "Còn trống", count: roomCounts.available, cls: "border-emerald-200 bg-emerald-50 text-emerald-900" },
+              { key: "FULL", label: "Đã đầy", count: roomCounts.full, cls: "border-red-200 bg-red-50 text-red-900" },
+              { key: "OVER", label: "Vượt sức chứa", count: roomCounts.over, cls: "border-amber-200 bg-amber-50 text-amber-900" },
+              { key: "LOCKED", label: "Khóa / Bảo trì", count: roomCounts.locked, cls: "border-slate-300 bg-slate-100 text-slate-800" },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setStatusFilter(item.key as typeof statusFilter)}
+                className={cn(
+                  "rounded-xl border p-3 text-left transition shadow-sm",
+                  item.cls,
+                  statusFilter === item.key && "ring-2 ring-blue-600"
+                )}
+              >
+                <p className="text-xs font-semibold opacity-80">{item.label}</p>
+                <p className="mt-0.5 text-xl font-bold">{item.count}</p>
+              </button>
+            ))}
+          </div>
+
           {/* Filter + Legend */}
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2.5">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Tìm mã phòng..."
-                  className="min-h-[38px] rounded-lg border border-slate-300 pl-9 pr-3 text-sm"
+                  className="min-h-[40px] rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm font-medium text-slate-900"
                 />
               </div>
 
               <select
                 value={buildingFilter}
                 onChange={(e) => setBuildingFilter(e.target.value)}
-                className="min-h-[38px] rounded-lg border border-slate-300 bg-white px-3 text-sm"
+                className="min-h-[40px] rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900"
               >
                 <option value="ALL">Tất cả tòa nhà</option>
                 {buildings.map((b) => (
@@ -251,18 +308,18 @@ export default function AdminRoomsPage() {
               </select>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 text-xs font-medium">
-              <span className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1.5">
                 <span className="h-3 w-3 rounded bg-emerald-500" /> Còn trống
               </span>
-              <span className="flex items-center gap-1">
+              <span className="flex items-center gap-1.5">
                 <span className="h-3 w-3 rounded bg-red-500" /> Đầy
               </span>
-              <span className="flex items-center gap-1">
+              <span className="flex items-center gap-1.5">
                 <span className="h-3 w-3 rounded bg-amber-400" /> Vượt sức chứa
               </span>
-              <span className="flex items-center gap-1">
-                <span className="h-3 w-3 rounded bg-slate-400" /> Đang khóa / Bảo trì
+              <span className="flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded bg-slate-500" /> Đang khóa / Bảo trì
               </span>
             </div>
           </div>
@@ -473,33 +530,34 @@ export default function AdminRoomsPage() {
                           </div>
 
                           {!collapsed && (
-                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+                            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
                               {fRooms.map((r) => {
                                 const isLocked = building.is_locked || r.is_locked || r.capacity === 0;
                                 const isOver = r.current_count > r.capacity && r.capacity > 0;
                                 const isFull = r.capacity > 0 && r.current_count === r.capacity;
                                 const checked = selectedIds.has(r.id);
+                                const pct = r.capacity > 0 ? Math.min(100, Math.round((r.current_count / r.capacity) * 100)) : 0;
 
                                 return (
                                   <div
                                     key={r.id}
                                     className={cn(
-                                      "relative rounded-lg border p-2.5 text-xs transition cursor-pointer",
+                                      "relative rounded-xl border p-3 text-sm transition cursor-pointer shadow-xs hover:shadow-md",
                                       isLocked
-                                        ? "border-slate-300 bg-slate-100 text-slate-600"
+                                        ? "border-slate-300 bg-slate-100 text-slate-800"
                                         : isOver
-                                        ? "border-amber-300 bg-amber-50 text-amber-900"
+                                        ? "border-amber-300 bg-amber-50 text-amber-950"
                                         : isFull
-                                        ? "border-red-200 bg-red-50 text-red-900"
-                                        : "border-emerald-200 bg-emerald-50/70 text-emerald-950",
+                                        ? "border-red-300 bg-red-50 text-red-950"
+                                        : "border-emerald-300 bg-emerald-50 text-emerald-950",
                                       checked && "ring-2 ring-blue-600"
                                     )}
                                   >
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center justify-between gap-1">
                                       <button
                                         type="button"
                                         onClick={() => setDrawerRoom(r)}
-                                        className="font-bold hover:underline"
+                                        className="text-sm font-bold text-slate-900 hover:text-blue-700 hover:underline"
                                       >
                                         {r.room_code}
                                       </button>
@@ -507,23 +565,49 @@ export default function AdminRoomsPage() {
                                         type="checkbox"
                                         checked={checked}
                                         onChange={() => toggleRoomSelect(r.id)}
-                                        className="h-3.5 w-3.5 rounded text-blue-600"
+                                        className="h-4 w-4 rounded text-blue-600"
                                       />
                                     </div>
                                     <div
                                       onClick={() => setDrawerRoom(r)}
-                                      className="mt-1 flex items-center justify-between text-[11px]"
+                                      className="mt-2 space-y-1.5"
                                     >
-                                      <span>
-                                        {r.current_count}/{r.capacity}
-                                      </span>
-                                      <span>
-                                        {r.gender_type === "MALE"
-                                          ? "Nam"
-                                          : r.gender_type === "FEMALE"
-                                          ? "Nữ"
-                                          : "Trống"}
-                                      </span>
+                                      <div className="flex items-center justify-between text-xs font-semibold">
+                                        <span className="text-slate-800">
+                                          {r.current_count}/{r.capacity} chỗ
+                                        </span>
+                                        <span
+                                          className={cn(
+                                            "rounded px-1.5 py-0.5 text-[11px] font-bold",
+                                            r.gender_type === "MALE"
+                                              ? "bg-blue-100 text-blue-800"
+                                              : r.gender_type === "FEMALE"
+                                              ? "bg-pink-100 text-pink-800"
+                                              : "bg-white/80 text-slate-700"
+                                          )}
+                                        >
+                                          {r.gender_type === "MALE"
+                                            ? "Nam"
+                                            : r.gender_type === "FEMALE"
+                                            ? "Nữ"
+                                            : "Trống"}
+                                        </span>
+                                      </div>
+                                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/80">
+                                        <div
+                                          className={cn(
+                                            "h-full rounded-full",
+                                            isLocked
+                                              ? "bg-slate-400"
+                                              : isOver
+                                              ? "bg-amber-500"
+                                              : isFull
+                                              ? "bg-red-500"
+                                              : "bg-emerald-600"
+                                          )}
+                                          style={{ width: `${pct}%` }}
+                                        />
+                                      </div>
                                     </div>
                                   </div>
                                 );

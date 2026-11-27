@@ -121,7 +121,7 @@ export default function AdminAuditLogsPage() {
                 <th className="px-4 py-3 text-right">Chi tiết</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
+            <tbody className="divide-y divide-slate-100 text-sm">
               {logs.map((l) => (
                 <tr key={l.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 whitespace-nowrap text-slate-600">

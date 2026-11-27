@@ -1,29 +1,33 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Be_Vietnam_Pro, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const beVietnamPro = Be_Vietnam_Pro({
+  variable: "--font-sans-vn",
+  subsets: ["vietnamese", "latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-mono-vn",
+  subsets: ["vietnamese", "latin"],
+  weight: ["500", "600", "700"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
   title: "Cổng Đăng Ký Ký Túc Xá — HANU",
-  description: "Hệ thống đăng ký và tra cứu phòng Ký túc xá trực tuyến",
+  description: "Hệ thống đăng ký và tra cứu phòng Ký túc xá Trường Đại học Hà Nội",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="vi"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${beVietnamPro.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-[#f9f9f9] text-[#0a0a0a]">
+      <body className="min-h-full flex flex-col bg-[#f6f5f2] text-[#111114] text-base leading-relaxed">
         {children}
       </body>
     </html>

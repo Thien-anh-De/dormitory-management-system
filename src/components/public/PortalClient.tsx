@@ -3,14 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  BedDouble,
+  Building2,
   Clock,
-  Filter,
+  Grid2x2,
+  LayoutGrid,
   Megaphone,
   RefreshCw,
   RotateCcw,
   Search,
   ShieldOff,
-  SlidersHorizontal,
+  Sparkles,
   X,
 } from "lucide-react";
 import type { PublicRoom, PublicRoomsPayload } from "@/lib/types";
@@ -38,13 +41,14 @@ export function PortalClient() {
   const [refreshCooldown, setRefreshCooldown] = useState(0);
   const [nowMs, setNowMs] = useState<number>(0);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(true);
 
   const [selectedBuilding, setSelectedBuilding] = useState<string>("ALL");
+  const [selectedFloorByBuilding, setSelectedFloorByBuilding] = useState<Record<string, number | "ALL">>({});
   const [genderFilter, setGenderFilter] = useState<string>("ALL");
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [searchRoom, setSearchRoom] = useState("");
+  const [viewMode, setViewMode] = useState<"CARDS" | "MATRIX">("CARDS");
   const [activeRoom, setActiveRoom] = useState<PublicRoom | null>(null);
 
   const fetchRooms = useCallback(async () => {
@@ -52,6 +56,7 @@ export function PortalClient() {
       const res = await fetch("/api/public/rooms", { cache: "no-store" });
       if (!res.ok) throw new Error("Failed");
       setData(await res.json());
+      setToastMsg(null);
     } catch {
       setToastMsg("Không thể tải danh sách phòng. Vui lòng thử lại.");
     } finally {
@@ -109,7 +114,7 @@ export function PortalClient() {
     if (!data.active_wave) return { isOpen: false, reason: "Hiện chưa có đợt đăng ký nào đang mở." };
     if (!cfg.is_portal_open) return { isOpen: false, reason: "Cổng đăng ký hiện đang tạm đóng." };
     if (nowMs > 0 && cfg.open_at && nowMs < new Date(cfg.open_at).getTime()) {
-      return { isOpen: false, countdownParts: getCountdownParts(new Date(cfg.open_at).getTime() - nowMs), reason: "Cổng đăng ký chưa đến giờ mở." };
+      return { isOpen: false, countdownParts: getCountdownParts(new Date(cfg.open_at).getTime() - nowMs), reason: "Cổng đăng ký sắp mở sau" };
     }
     if (nowMs > 0 && cfg.close_at && nowMs > new Date(cfg.close_at).getTime()) {
       return { isOpen: false, reason: "Đã hết thời gian đăng ký cho đợt này." };
@@ -130,16 +135,19 @@ export function PortalClient() {
   }, [data]);
 
   const stats = useMemo(() => {
-    if (!data) return { total: 0, available: 0, full: 0 };
-    let available = 0, full = 0;
+    if (!data) return { total: 0, availableRooms: 0, fullRooms: 0, freeBeds: 0, totalBeds: 0 };
+    let availableRooms = 0, fullRooms = 0, freeBeds = 0, totalBeds = 0;
     for (const r of data.rooms) {
       const b = buildingsMap.get(r.building_id);
       if (!r.is_locked && !b?.is_locked && r.capacity > 0) {
-        if (r.current_count < r.capacity) available++;
-        else full++;
+        totalBeds += r.capacity;
+        const left = Math.max(0, r.capacity - r.current_count);
+        freeBeds += left;
+        if (left > 0) availableRooms++;
+        else fullRooms++;
       }
     }
-    return { total: data.rooms.length, available, full };
+    return { total: data.rooms.length, availableRooms, fullRooms, freeBeds, totalBeds };
   }, [data, buildingsMap]);
 
   const filteredRooms = useMemo(() => {
@@ -173,12 +181,20 @@ export function PortalClient() {
     }
     return data.buildings
       .filter(b => byB.has(b.id))
-      .map(b => ({
-        building: b,
-        floors: Array.from(byB.get(b.id)!.entries())
+      .map(b => {
+        const allFloors = Array.from(byB.get(b.id)!.entries())
           .sort(([a], [c]) => a - c)
-          .map(([floor, rooms]) => ({ floor, rooms })),
-      }));
+          .map(([floor, rooms]) => ({ floor, rooms }));
+        const availableCount = allFloors.flatMap(f => f.rooms).filter(
+          r => !b.is_locked && !r.is_locked && r.capacity > 0 && r.current_count < r.capacity
+        ).length;
+        return {
+          building: b,
+          floors: allFloors,
+          totalRooms: allFloors.reduce((acc, f) => acc + f.rooms.length, 0),
+          availableCount,
+        };
+      });
   }, [data, filteredRooms]);
 
   const toggleAmenity = (id: string) =>
@@ -187,294 +203,531 @@ export function PortalClient() {
   if (loading) {
     return (
       <div className="space-y-6 pb-24">
-        <div className="skeleton h-52 rounded-2xl" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton h-56 rounded-2xl" />)}
+        <div className="skeleton h-64 rounded-3xl" />
+        <div className="skeleton h-24 rounded-3xl" />
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton h-64 rounded-3xl" />)}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 pb-28">
-      {/* ── HERO SECTION ── */}
-      <section className="relative overflow-hidden rounded-2xl bg-black text-white">
-        {/* Decorative background */}
-        <div className="absolute inset-0 opacity-20"
-          style={{ backgroundImage: "radial-gradient(circle at 20% 50%, #dc2626 0%, transparent 50%), radial-gradient(circle at 80% 20%, #991b1b 0%, transparent 40%)" }} />
-        <div className="absolute top-0 right-0 h-full w-1/3 opacity-5"
-          style={{ backgroundImage: "repeating-linear-gradient(45deg, white 0, white 1px, transparent 0, transparent 50%)", backgroundSize: "20px 20px" }} />
+    <div className="space-y-7 pb-28">
+      {/* ── EDITORIAL BENTO HERO ── */}
+      <section className="relative overflow-hidden rounded-3xl obsidian-mesh p-6 text-white shadow-2xl shadow-black/15 sm:p-8 lg:p-10">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.06]"
+          style={{
+            backgroundImage:
+              "linear-gradient(to right, white 1px, transparent 1px), linear-gradient(to bottom, white 1px, transparent 1px)",
+            backgroundSize: "36px 36px",
+          }}
+        />
 
-        <div className="relative px-5 py-8 sm:px-8 sm:py-10">
-          <div className="flex flex-wrap items-start justify-between gap-6">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="rounded-full border border-red-500/40 bg-red-600/20 px-3 py-1 text-xs font-bold tracking-wider text-red-300 uppercase">
-                  {data?.active_wave?.name ?? "Chưa mở đợt"}
+        <div className="relative grid gap-8 lg:grid-cols-12 lg:items-center">
+          {/* Narrative */}
+          <div className="space-y-4 lg:col-span-7">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400/35 bg-[#c8102e]/25 px-3.5 py-1.5 text-xs sm:text-[13px] font-bold tracking-wide text-red-200 uppercase">
+                <Sparkles className="h-3.5 w-3.5" />
+                {data?.active_wave?.name ?? "Chưa mở đợt"}
+              </span>
+              {portalStatus.isOpen ? (
+                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-3.5 py-1.5 text-xs sm:text-[13px] font-bold text-emerald-300">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Đang mở tiếp nhận đơn
                 </span>
-                {portalStatus.isOpen && (
-                  <span className="flex items-center gap-1.5 rounded-full bg-green-500/15 border border-green-500/30 px-3 py-1 text-xs font-bold text-green-400">
-                    <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
-                    Đang mở
-                  </span>
-                )}
-              </div>
-              <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
-                Sơ đồ Phòng<br />
-                <span className="text-red-500">Ký túc xá HANU</span>
-              </h1>
-              <p className="text-sm text-white/60 max-w-md">
-                Chọn phòng phù hợp và hoàn tất phiếu đăng ký trực tuyến trong vài bước đơn giản.
-              </p>
-            </div>
-
-            {/* Stats grid */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {[
-                { label: "Tổng phòng", value: stats.total },
-                { label: "Còn chỗ", value: stats.available, red: true },
-                { label: "Đã đầy", value: stats.full },
-              ].map(s => (
-                <div key={s.label} className={cn(
-                  "rounded-xl border p-3 text-center min-w-[80px]",
-                  s.red
-                    ? "border-red-500/40 bg-red-600/15"
-                    : "border-white/10 bg-white/5"
-                )}>
-                  <p className={cn("text-2xl font-black", s.red ? "text-red-400" : "text-white")}>{s.value}</p>
-                  <p className="text-[11px] font-semibold text-white/50 mt-0.5">{s.label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Closed portal */}
-          {!portalStatus.isOpen && (
-            <div className="mt-6 flex flex-col gap-4 rounded-xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between backdrop-blur">
-              <div className="flex items-center gap-2.5 text-sm font-semibold text-amber-300">
-                <ShieldOff className="h-5 w-5 shrink-0" />
-                {portalStatus.reason}
-              </div>
-              {portalStatus.countdownParts && (
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-white/40" />
-                  <div className="flex items-center gap-1.5 font-mono text-sm font-black">
-                    {portalStatus.countdownParts.days > 0 && (
-                      <><span className="rounded-lg bg-white/10 px-2.5 py-1">{portalStatus.countdownParts.days}d</span><span className="text-white/30">:</span></>
-                    )}
-                    <span className="rounded-lg bg-red-600 px-2.5 py-1">{portalStatus.countdownParts.hrs}</span>
-                    <span className="text-white/30">:</span>
-                    <span className="rounded-lg bg-red-600 px-2.5 py-1">{portalStatus.countdownParts.mins}</span>
-                    <span className="text-white/30">:</span>
-                    <span className="rounded-lg bg-red-600 px-2.5 py-1">{portalStatus.countdownParts.secs}</span>
-                  </div>
-                </div>
+              ) : (
+                <span className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-500/15 px-3.5 py-1.5 text-xs sm:text-[13px] font-bold text-amber-200">
+                  <ShieldOff className="h-3.5 w-3.5" />
+                  Cổng chưa mở
+                </span>
               )}
             </div>
-          )}
 
-          {/* Announcement */}
-          {data?.system_config.announcement && (
-            <div className="mt-4 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-              <Megaphone className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-              <p className="whitespace-pre-line leading-relaxed">{data.system_config.announcement}</p>
-            </div>
-          )}
+            <h1 className="text-3xl font-extrabold tracking-tight leading-[1.15] sm:text-4xl lg:text-[44px]">
+              Chọn Không Gian Nội Trú
+              <span className="block text-[#ff4d67]">Ký Túc Xá HANU</span>
+            </h1>
 
-          {/* Last updated */}
-          {data?.fetched_at && (
-            <p className="mt-4 text-xs text-white/35">
-              Cập nhật lần cuối lúc{" "}
-              <span className="font-mono font-semibold text-white/60">{formatTimeHHMMSS(data.fetched_at)}</span>
+            <p className="max-w-xl text-[15px] sm:text-base text-white/75 leading-relaxed">
+              Xem trực tiếp số giường trống từng phòng theo tòa nhà và tầng, chọn tiện ích phù hợp và gửi hồ sơ trực tuyến chỉ trong 30 giây.
             </p>
-          )}
-        </div>
-      </section>
 
-      {toastMsg && (
-        <div className="animate-shake flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {toastMsg}
-        </div>
-      )}
-
-      {/* ── FILTER BAR ── */}
-      <section className="rounded-2xl border border-black/8 bg-white shadow-sm">
-        <div
-          className="flex cursor-pointer items-center justify-between px-4 py-3.5 sm:px-5"
-          onClick={() => setFiltersOpen(v => !v)}
-        >
-          <div className="flex items-center gap-2 text-sm font-bold text-black">
-            <SlidersHorizontal className="h-4 w-4 text-red-600" />
-            Bộ lọc
-            <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-bold text-gray-700">
-              {filteredRooms.length} phòng
-            </span>
-            {hasActiveFilters && (
-              <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">
-                Đang lọc
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); setSelectedBuilding("ALL"); setGenderFilter("ALL"); setSelectedAmenities([]); setOnlyAvailable(false); setSearchRoom(""); }}
-                className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-gray-500 hover:bg-gray-100 hover:text-black"
-              >
-                <RotateCcw className="h-3 w-3" />
-                Đặt lại
-              </button>
-            )}
-            <Filter className={cn("h-4 w-4 text-gray-400 transition-transform", filtersOpen ? "rotate-180" : "")} />
-          </div>
-        </div>
-
-        {filtersOpen && (
-          <div className="border-t border-black/6 p-4 sm:p-5 space-y-3.5">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input
-                  value={searchRoom}
-                  onChange={e => setSearchRoom(e.target.value)}
-                  placeholder="Tìm mã phòng..."
-                  className="min-h-[42px] w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-9 text-sm transition focus:border-red-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/15"
-                />
-                {searchRoom && (
-                  <button onClick={() => setSearchRoom("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-
-              <select
-                value={selectedBuilding}
-                onChange={e => setSelectedBuilding(e.target.value)}
-                className="min-h-[42px] w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 text-sm font-medium transition focus:border-red-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/15"
-              >
-                <option value="ALL">Tất cả tòa nhà</option>
-                {(data?.buildings ?? []).map(b => <option key={b.id} value={b.id}>{b.name} ({b.code})</option>)}
-              </select>
-
-              <select
-                value={genderFilter}
-                onChange={e => setGenderFilter(e.target.value)}
-                className="min-h-[42px] w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 text-sm font-medium transition focus:border-red-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/15"
-              >
-                <option value="ALL">Tất cả giới tính</option>
-                <option value="MALE">Phòng Nam</option>
-                <option value="FEMALE">Phòng Nữ</option>
-                <option value="EMPTY">Phòng trống chưa xác định</option>
-              </select>
-
-              <button
-                type="button"
-                onClick={() => setOnlyAvailable(v => !v)}
-                className={cn(
-                  "flex min-h-[42px] items-center justify-between rounded-xl border px-4 text-sm font-semibold transition",
-                  onlyAvailable ? "border-red-600 bg-red-600 text-white" : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"
-                )}
-              >
-                Chỉ còn chỗ trống
-                <span className={cn("relative ml-3 inline-flex h-5 w-9 shrink-0 rounded-full transition-colors", onlyAvailable ? "bg-white/30" : "bg-gray-300")}>
-                  <span className={cn("inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform", onlyAvailable ? "translate-x-4" : "translate-x-0")} />
+            {data?.fetched_at && (
+              <div className="flex flex-wrap items-center gap-3 pt-1 text-sm text-white/55">
+                <span>
+                  Đồng bộ lúc{" "}
+                  <strong className="font-mono text-white/90">{formatTimeHHMMSS(data.fetched_at)}</strong>
                 </span>
-              </button>
+                <button
+                  type="button"
+                  onClick={handleManualRefresh}
+                  disabled={refreshCooldown > 0}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/8 px-3 py-1 text-xs sm:text-[13px] font-bold text-white hover:bg-white/15 disabled:opacity-50 transition"
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", refreshCooldown > 0 && "animate-spin")} />
+                  {refreshCooldown > 0 ? `Chờ ${refreshCooldown}s` : "Làm mới ngay"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Bento Stats Panel */}
+          <div className="grid grid-cols-2 gap-3 lg:col-span-5">
+            <button
+              type="button"
+              onClick={() => setOnlyAvailable(v => !v)}
+              className={cn(
+                "col-span-2 rounded-2xl border p-5 text-left transition-all",
+                onlyAvailable
+                  ? "border-red-400 bg-[#c8102e] shadow-lg shadow-red-900/40"
+                  : "border-red-500/35 bg-red-600/20 hover:bg-red-600/30"
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs sm:text-[13px] font-bold uppercase tracking-wider text-red-200">
+                  Giường còn trống toàn KTX
+                </span>
+                <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-xs font-bold text-white">
+                  {onlyAvailable ? "Đang lọc còn chỗ ✓" : "Bấm để lọc"}
+                </span>
+              </div>
+              <div className="mt-2 flex items-baseline gap-3">
+                <span className="font-mono text-4xl sm:text-5xl font-extrabold tabular-nums text-white">
+                  {stats.freeBeds}
+                </span>
+                <span className="text-sm sm:text-[15px] font-semibold text-white/75">
+                  chỗ trống / {stats.totalBeds} giường ({stats.availableRooms} phòng)
+                </span>
+              </div>
+            </button>
+
+            <div className="rounded-2xl border border-white/12 bg-white/6 p-4 backdrop-blur-sm">
+              <p className="text-xs sm:text-[13px] font-semibold text-white/60">Tổng số phòng</p>
+              <p className="mt-1 font-mono text-3xl font-extrabold tabular-nums text-white">{stats.total}</p>
             </div>
 
-            {(data?.amenities.length ?? 0) > 0 && (
-              <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Tiện ích:</span>
-                {data!.amenities.map(a => {
-                  const on = selectedAmenities.includes(a.id);
-                  return (
-                    <button
-                      key={a.id}
-                      type="button"
-                      onClick={() => toggleAmenity(a.id)}
-                      className={cn(
-                        "flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition-all",
-                        on ? "border-red-600 bg-red-600 text-white shadow-sm" : "border-gray-200 bg-white text-gray-700 hover:border-gray-400"
-                      )}
-                    >
-                      {a.icon && <span>{a.icon}</span>}
-                      {a.name}
-                    </button>
-                  );
-                })}
+            <div className="rounded-2xl border border-white/12 bg-white/6 p-4 backdrop-blur-sm">
+              <p className="text-xs sm:text-[13px] font-semibold text-white/60">Phòng đã đầy</p>
+              <p className="mt-1 font-mono text-3xl font-extrabold tabular-nums text-white/85">{stats.fullRooms}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Countdown / Closed Banner */}
+        {!portalStatus.isOpen && (
+          <div className="relative mt-6 flex flex-col gap-4 rounded-2xl border border-amber-400/25 bg-white/8 p-4 sm:flex-row sm:items-center sm:justify-between backdrop-blur-md">
+            <div className="flex items-center gap-3 text-[15px] font-bold text-amber-200">
+              <Clock className="h-5 w-5 shrink-0 text-amber-300" />
+              <span>{portalStatus.reason}</span>
+            </div>
+            {portalStatus.countdownParts && (
+              <div className="flex items-center gap-2 font-mono">
+                {portalStatus.countdownParts.days > 0 && (
+                  <div className="rounded-xl bg-white/12 px-3.5 py-2 text-center">
+                    <p className="text-2xl font-extrabold leading-none">{portalStatus.countdownParts.days}</p>
+                    <p className="mt-1 text-[11px] font-semibold text-white/60">NGÀY</p>
+                  </div>
+                )}
+                {[
+                  { v: portalStatus.countdownParts.hrs, label: "GIỜ" },
+                  { v: portalStatus.countdownParts.mins, label: "PHÚT" },
+                  { v: portalStatus.countdownParts.secs, label: "GIÂY" },
+                ].map(item => (
+                  <div key={item.label} className="rounded-xl bg-[#c8102e] px-3.5 py-2 text-center shadow-md">
+                    <p className="text-2xl font-extrabold leading-none tabular-nums">{item.v}</p>
+                    <p className="mt-1 text-[11px] font-semibold text-red-100">{item.label}</p>
+                  </div>
+                ))}
               </div>
             )}
           </div>
         )}
+
+        {/* Announcement */}
+        {data?.system_config.announcement && (
+          <div className="relative mt-4 flex items-start gap-3 rounded-2xl border border-amber-400/35 bg-amber-500/15 px-4 py-3.5 text-[15px] text-amber-100">
+            <Megaphone className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+            <p className="whitespace-pre-line leading-relaxed font-medium">{data.system_config.announcement}</p>
+          </div>
+        )}
       </section>
 
-      {/* ── ROOM GRID ── */}
+      {toastMsg && (
+        <div className="animate-shake flex items-center gap-3 rounded-2xl border border-red-300 bg-red-50 px-5 py-3.5 text-[15px] font-bold text-[#c8102e]">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          {toastMsg}
+        </div>
+      )}
+
+      {/* ── AIRBNB-STYLE BUILDING RAIL + COMMAND BAR ── */}
+      <section className="bento-card rounded-3xl p-4 sm:p-5 space-y-4">
+        {/* Top Row: Building Pills + View Toggle */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/8 pb-4">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+            <button
+              type="button"
+              onClick={() => setSelectedBuilding("ALL")}
+              className={cn(
+                "shrink-0 rounded-full px-4 py-2 text-sm sm:text-[15px] font-bold transition-all",
+                selectedBuilding === "ALL"
+                  ? "bg-[#111114] text-white shadow-sm"
+                  : "bg-[#f6f5f2] text-stone-700 hover:bg-stone-200"
+              )}
+            >
+              Tất cả tòa nhà ({data?.rooms.length ?? 0})
+            </button>
+            {(data?.buildings ?? []).map(b => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => setSelectedBuilding(b.id)}
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm sm:text-[15px] font-bold transition-all",
+                  selectedBuilding === b.id
+                    ? "bg-[#c8102e] text-white shadow-md shadow-red-600/20"
+                    : "bg-[#f6f5f2] text-stone-700 hover:bg-stone-200"
+                )}
+              >
+                <Building2 className="h-4 w-4" />
+                {b.name}
+                <span className={cn("text-xs font-extrabold", selectedBuilding === b.id ? "text-red-100" : "text-stone-400")}>
+                  {b.code}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="inline-flex items-center rounded-2xl bg-[#f6f5f2] p-1 border border-black/6">
+            <button
+              type="button"
+              onClick={() => setViewMode("CARDS")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-bold transition",
+                viewMode === "CARDS" ? "bg-white text-[#111114] shadow-sm" : "text-stone-500 hover:text-[#111114]"
+              )}
+            >
+              <LayoutGrid className="h-4 w-4" />
+              Thẻ phòng
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("MATRIX")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-bold transition",
+                viewMode === "MATRIX" ? "bg-white text-[#111114] shadow-sm" : "text-stone-500 hover:text-[#111114]"
+              )}
+            >
+              <Grid2x2 className="h-4 w-4" />
+              Sơ đồ nhanh
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Controls Row */}
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-12 lg:items-center">
+          {/* Search input */}
+          <div className="relative lg:col-span-4">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-stone-400" />
+            <input
+              value={searchRoom}
+              onChange={e => setSearchRoom(e.target.value)}
+              placeholder="Tìm mã phòng (VD: 201D10)..."
+              className="min-h-[48px] w-full rounded-2xl border border-black/12 bg-[#f6f5f2] pl-11 pr-10 text-base font-medium transition focus:border-[#c8102e] focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-600/15"
+            />
+            {searchRoom && (
+              <button
+                type="button"
+                onClick={() => setSearchRoom("")}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-stone-400 hover:bg-stone-200 hover:text-[#111114]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Gender Segmented Pills */}
+          <div className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-[#f6f5f2] p-1.5 lg:col-span-5">
+            {[
+              { id: "ALL", label: "Tất cả" },
+              { id: "MALE", label: "Phòng Nam" },
+              { id: "FEMALE", label: "Phòng Nữ" },
+              { id: "EMPTY", label: "Chưa gán" },
+            ].map(g => (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => setGenderFilter(g.id)}
+                className={cn(
+                  "flex-1 min-w-[74px] rounded-xl px-3 py-2 text-sm font-bold transition",
+                  genderFilter === g.id
+                    ? "bg-[#111114] text-white shadow-sm"
+                    : "text-stone-600 hover:text-[#111114]"
+                )}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Availability Toggle */}
+          <div className="flex items-center gap-2 lg:col-span-3">
+            <button
+              type="button"
+              onClick={() => setOnlyAvailable(v => !v)}
+              className={cn(
+                "flex min-h-[48px] flex-1 items-center justify-between rounded-2xl border px-4 text-[15px] font-bold transition",
+                onlyAvailable
+                  ? "border-[#c8102e] bg-[#c8102e] text-white shadow-md shadow-red-600/20"
+                  : "border-black/12 bg-[#f6f5f2] text-[#111114] hover:bg-stone-200/70"
+              )}
+            >
+              <span>Chỉ còn chỗ</span>
+              <span className={cn("relative ml-2 inline-flex h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors", onlyAvailable ? "bg-white/30" : "bg-stone-300")}>
+                <span className={cn("inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform", onlyAvailable ? "translate-x-5" : "translate-x-0")} />
+              </span>
+            </button>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedBuilding("ALL");
+                  setGenderFilter("ALL");
+                  setSelectedAmenities([]);
+                  setOnlyAvailable(false);
+                  setSearchRoom("");
+                  setSelectedFloorByBuilding({});
+                }}
+                title="Đặt lại bộ lọc"
+                className="flex min-h-[48px] items-center justify-center rounded-2xl border border-black/12 bg-white px-3.5 text-sm font-bold text-stone-700 hover:bg-stone-100"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Amenities Row */}
+        {(data?.amenities.length ?? 0) > 0 && (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className="text-sm font-bold text-stone-500 mr-1">Tiện ích:</span>
+            {data!.amenities.map(a => {
+              const on = selectedAmenities.includes(a.id);
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => toggleAmenity(a.id)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-bold transition-all",
+                    on
+                      ? "border-[#c8102e] bg-[#c8102e] text-white shadow-sm"
+                      : "border-black/12 bg-white text-stone-700 hover:border-black/30 hover:bg-[#f6f5f2]"
+                  )}
+                >
+                  {a.icon && <span>{a.icon}</span>}
+                  {a.name}
+                </button>
+              );
+            })}
+            <span className="ml-auto text-sm font-bold text-stone-500">
+              Hiển thị <strong className="text-[#111114]">{filteredRooms.length}</strong> phòng
+            </span>
+          </div>
+        )}
+      </section>
+
+      {/* ── BUILDING SECTIONS & ROOM GRID / MATRIX ── */}
       {grouped.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-white p-14 text-center">
-          <p className="text-sm font-bold text-gray-500">
-            {data?.rooms.length === 0 ? "Chưa có dữ liệu phòng nào trong hệ thống." : "Không tìm thấy phòng nào khớp với bộ lọc."}
+        <div className="bento-card rounded-3xl border-2 border-dashed border-black/15 p-14 text-center">
+          <BedDouble className="mx-auto mb-3 h-10 w-10 text-stone-400" />
+          <p className="text-lg font-extrabold text-[#111114]">
+            {data?.rooms.length === 0
+              ? "Chưa có dữ liệu phòng nào trong hệ thống."
+              : "Không tìm thấy phòng phù hợp bộ lọc"}
+          </p>
+          <p className="mt-1 text-[15px] text-stone-500">
+            Thử tắt bớt điều kiện lọc hoặc chọn tòa nhà khác.
           </p>
         </div>
       ) : (
         <div className="space-y-10">
-          {grouped.map(({ building, floors }) => (
-            <section key={building.id}>
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-1 rounded-full bg-red-600" />
-                  <h2 className="text-xl font-black tracking-tight text-black">
-                    {building.name}
-                    <span className="ml-2 text-sm font-bold text-gray-400">({building.code})</span>
-                  </h2>
-                </div>
-                {building.is_locked && (
-                  <span className="rounded-full bg-gray-900 px-3 py-1 text-xs font-bold text-white">
-                    Khóa
-                  </span>
-                )}
-              </div>
+          {grouped.map(({ building, floors, totalRooms, availableCount }) => {
+            const activeFloor = selectedFloorByBuilding[building.id] ?? "ALL";
+            const visibleFloors = activeFloor === "ALL" ? floors : floors.filter(f => f.floor === activeFloor);
 
-              {floors.map(({ floor, rooms }) => (
-                <div key={floor} className="mb-6">
-                  <div className="mb-3 flex items-center gap-2">
-                    <span className="rounded-md bg-black px-2.5 py-0.5 text-xs font-black text-white">Tầng {floor}</span>
-                    <span className="text-xs text-gray-500 font-medium">{rooms.length} phòng</span>
+            return (
+              <section key={building.id} className="space-y-5">
+                {/* Building Header + Floor Quick Filter */}
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-black/10 pb-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#111114] font-mono text-base font-extrabold text-white">
+                      {building.code}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2.5">
+                        <h2 className="text-2xl font-extrabold tracking-tight text-[#111114]">
+                          {building.name}
+                        </h2>
+                        {building.is_locked && (
+                          <span className="rounded-full bg-stone-900 px-3 py-1 text-xs font-bold text-white">
+                            Tòa đang khóa
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm font-medium text-stone-500">
+                        {totalRooms} phòng ·{" "}
+                        <strong className="text-emerald-700">{availableCount} phòng còn chỗ</strong>
+                      </p>
+                    </div>
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {rooms.map(room => (
-                      <RoomCard
-                        key={room.id}
-                        room={room}
-                        buildingLocked={building.is_locked}
-                        amenitiesMap={amenitiesMap}
-                        portalOpen={portalStatus.isOpen}
-                        onSelect={r => setActiveRoom(r)}
-                      />
-                    ))}
-                  </div>
+
+                  {/* Quick Floor Switcher Pills */}
+                  {floors.length > 1 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFloorByBuilding(p => ({ ...p, [building.id]: "ALL" }))}
+                        className={cn(
+                          "rounded-xl px-3.5 py-2 text-sm font-bold transition",
+                          activeFloor === "ALL"
+                            ? "bg-[#111114] text-white"
+                            : "bg-white border border-black/10 text-stone-600 hover:bg-stone-100"
+                        )}
+                      >
+                        Tất cả tầng
+                      </button>
+                      {floors.map(({ floor }) => (
+                        <button
+                          key={floor}
+                          type="button"
+                          onClick={() => setSelectedFloorByBuilding(p => ({ ...p, [building.id]: floor }))}
+                          className={cn(
+                            "rounded-xl px-3.5 py-2 text-sm font-bold transition",
+                            activeFloor === floor
+                              ? "bg-[#c8102e] text-white shadow-sm"
+                              : "bg-white border border-black/10 text-stone-600 hover:bg-stone-100"
+                          )}
+                        >
+                          Tầng {floor}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ))}
-            </section>
-          ))}
+
+                {visibleFloors.map(({ floor, rooms }) => (
+                  <div key={floor} className="space-y-3.5">
+                    <div className="flex items-center gap-3">
+                      <span className="rounded-xl bg-[#111114] px-3.5 py-1 text-sm font-extrabold text-white">
+                        Tầng {floor}
+                      </span>
+                      <span className="text-sm font-semibold text-stone-500">
+                        {rooms.length} phòng
+                      </span>
+                    </div>
+
+                    {viewMode === "CARDS" ? (
+                      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {rooms.map(room => (
+                          <RoomCard
+                            key={room.id}
+                            room={room}
+                            buildingLocked={building.is_locked}
+                            amenitiesMap={amenitiesMap}
+                            portalOpen={portalStatus.isOpen}
+                            onSelect={r => setActiveRoom(r)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      /* Compact Quick Blueprint Matrix Mode */
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6">
+                        {rooms.map(room => {
+                          const isMaintenance = room.capacity === 0;
+                          const isFull = room.capacity > 0 && room.current_count >= room.capacity;
+                          const isLocked = building.is_locked || room.is_locked;
+                          const isDisabled = !portalStatus.isOpen || isMaintenance || isFull || isLocked;
+                          const effGender = room.fixed_gender ?? room.gender_type;
+                          const pct = room.capacity > 0 ? Math.min(100, Math.round((room.current_count / room.capacity) * 100)) : 0;
+
+                          return (
+                            <button
+                              key={room.id}
+                              type="button"
+                              disabled={isDisabled}
+                              onClick={() => setActiveRoom(room)}
+                              className={cn(
+                                "rounded-2xl border p-3.5 text-left transition-all",
+                                isDisabled
+                                  ? "border-black/10 bg-stone-200/70 text-stone-500 cursor-not-allowed"
+                                  : "border-black/12 bg-white hover:-translate-y-0.5 hover:border-[#c8102e] hover:shadow-md cursor-pointer"
+                              )}
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-mono text-base font-extrabold text-[#111114]">
+                                  {room.room_code}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "rounded-md px-2 py-0.5 text-xs font-bold",
+                                    effGender === "MALE"
+                                      ? "bg-sky-100 text-sky-800"
+                                      : effGender === "FEMALE"
+                                      ? "bg-rose-100 text-rose-800"
+                                      : "bg-emerald-100 text-emerald-800"
+                                  )}
+                                >
+                                  {effGender === "MALE" ? "Nam" : effGender === "FEMALE" ? "Nữ" : "Trống"}
+                                </span>
+                              </div>
+                              <div className="mt-2.5 flex items-center justify-between text-sm font-bold">
+                                <span className={isFull ? "text-[#c8102e]" : "text-emerald-700"}>
+                                  {room.current_count}/{room.capacity} chỗ
+                                </span>
+                                <span className="text-xs text-stone-500">
+                                  {(room.price / 1000).toFixed(0)}k
+                                </span>
+                              </div>
+                              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-200">
+                                <div
+                                  className={cn(
+                                    "h-full rounded-full",
+                                    isFull ? "bg-[#c8102e]" : "bg-emerald-600"
+                                  )}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </section>
+            );
+          })}
         </div>
       )}
 
-      {/* ── FLOATING REFRESH ── */}
+      {/* ── FLOATING LIVE REFRESH ── */}
       <button
         type="button"
         onClick={handleManualRefresh}
         disabled={refreshCooldown > 0}
         className={cn(
-          "fixed bottom-6 right-5 z-40 flex items-center gap-2 rounded-full px-5 py-3 text-sm font-black text-white shadow-xl transition-all sm:right-8",
+          "fixed bottom-6 right-5 z-40 flex items-center gap-2.5 rounded-full px-5 py-3.5 text-[15px] font-extrabold text-white shadow-xl transition-all sm:right-8",
           refreshCooldown > 0
-            ? "bg-gray-700 shadow-none cursor-not-allowed"
-            : "bg-red-600 shadow-red-500/40 hover:bg-red-700 animate-pulse-ring"
+            ? "bg-stone-700 shadow-none cursor-not-allowed"
+            : "bg-[#c8102e] shadow-red-600/35 hover:bg-[#a50d26] animate-pulse-ring"
         )}
       >
         <RefreshCw className={cn("h-4 w-4", refreshCooldown > 0 && "animate-spin")} />
-        {refreshCooldown > 0 ? `${refreshCooldown}s` : "Cập nhật"}
+        {refreshCooldown > 0 ? `Chờ ${refreshCooldown}s` : "Cập nhật phòng trống"}
       </button>
 
       {activeRoom && data && (

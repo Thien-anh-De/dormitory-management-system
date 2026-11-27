@@ -1,16 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  ArrowDown,
-  ArrowUp,
-  Eye,
-  Loader2,
-  Plus,
-  Save,
-  Trash2,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, Eye, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import type { DynamicField } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 function toLocalDatetimeInput(iso: string | null) {
   if (!iso) return "";
@@ -25,9 +18,7 @@ function toLocalDatetimeInput(iso: string | null) {
 export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(
-    null
-  );
+  const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   const [isPortalOpen, setIsPortalOpen] = useState(false);
   const [openAt, setOpenAt] = useState("");
@@ -36,25 +27,28 @@ export default function AdminSettingsPage() {
   const [fields, setFields] = useState<DynamicField[]>([]);
 
   useEffect(() => {
+    let active = true;
     fetch("/api/admin/settings")
-      .then((r) => r.json())
-      .then((j) => {
-        if (j.config) {
-          setIsPortalOpen(Boolean(j.config.is_portal_open));
-          setOpenAt(toLocalDatetimeInput(j.config.open_at));
-          setCloseAt(toLocalDatetimeInput(j.config.close_at));
-          setAnnouncement(j.config.announcement ?? "");
-          setFields(
-            Array.isArray(j.config.dynamic_fields) ? j.config.dynamic_fields : []
-          );
-        }
+      .then(r => r.json())
+      .then(j => {
+        if (!active || !j.config) return;
+        setIsPortalOpen(Boolean(j.config.is_portal_open));
+        setOpenAt(toLocalDatetimeInput(j.config.open_at));
+        setCloseAt(toLocalDatetimeInput(j.config.close_at));
+        setAnnouncement(j.config.announcement ?? "");
+        setFields(Array.isArray(j.config.dynamic_fields) ? j.config.dynamic_fields : []);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   function addField() {
     const id = `field_${Date.now().toString().slice(-5)}`;
-    setFields((prev) => [
+    setFields(prev => [
       ...prev,
       {
         id,
@@ -68,15 +62,13 @@ export default function AdminSettingsPage() {
   }
 
   function updateField(index: number, patch: Partial<DynamicField>) {
-    setFields((prev) =>
-      prev.map((f, idx) => (idx === index ? { ...f, ...patch } : f))
-    );
+    setFields(prev => prev.map((f, idx) => (idx === index ? { ...f, ...patch } : f)));
   }
 
   function moveField(index: number, dir: -1 | 1) {
     const target = index + dir;
     if (target < 0 || target >= fields.length) return;
-    setFields((prev) => {
+    setFields(prev => {
       const next = [...prev];
       const [item] = next.splice(index, 1);
       next.splice(target, 0, item);
@@ -85,7 +77,7 @@ export default function AdminSettingsPage() {
   }
 
   function removeField(index: number) {
-    setFields((prev) => prev.filter((_, idx) => idx !== index));
+    setFields(prev => prev.filter((_, idx) => idx !== index));
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -98,12 +90,12 @@ export default function AdminSettingsPage() {
       open_at: openAt ? new Date(openAt).toISOString() : null,
       close_at: closeAt ? new Date(closeAt).toISOString() : null,
       announcement,
-      dynamic_fields: fields.map((f) => ({
+      dynamic_fields: fields.map(f => ({
         ...f,
         label: f.label.trim() || "Câu hỏi",
         options:
           f.type === "select"
-            ? (f.options ?? []).map((o) => o.trim()).filter(Boolean)
+            ? (f.options ?? []).map(o => o.trim()).filter(Boolean)
             : undefined,
       })),
     };
@@ -125,41 +117,40 @@ export default function AdminSettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-10 text-sm text-slate-500">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải cấu hình...
+      <div className="flex items-center justify-center p-14 text-base font-semibold text-stone-500">
+        <Loader2 className="mr-2.5 h-5 w-5 animate-spin text-[#c8102e]" /> Đang tải cấu hình...
       </div>
     );
   }
 
+  const inputClass =
+    "min-h-[46px] w-full rounded-2xl border-2 border-stone-200 bg-[#f6f5f2] px-4 text-base font-medium focus:border-[#c8102e] focus:bg-white focus:outline-none";
+
   return (
     <form onSubmit={handleSave} className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">
-            Cài đặt Hệ thống & Phiếu đăng ký (Zero-Code)
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#111114]">
+            Cài đặt Hệ thống & Phiếu đăng ký
           </h1>
-          <p className="text-xs text-slate-500">
-            Bật/tắt cổng, hẹn giờ mở/đóng và tùy biến các câu hỏi mở rộng trên phiếu đăng ký.
+          <p className="mt-1 text-[15px] text-stone-500">
+            Bật/tắt cổng đăng ký, hẹn giờ mở/đóng tự động và tùy biến câu hỏi trên biểu mẫu sinh viên.
           </p>
         </div>
 
         <button
           type="submit"
           disabled={saving}
-          className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-slate-400"
+          className="flex min-h-[48px] items-center gap-2 rounded-2xl bg-[#c8102e] px-6 text-[15px] font-extrabold text-white shadow-lg shadow-red-600/25 hover:bg-[#a50d26] disabled:bg-stone-400 transition"
         >
-          {saving ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4" />
-          )}
-          Lưu cấu hình
+          {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
+          Lưu toàn bộ cấu hình
         </button>
       </div>
 
       {msg && (
         <div
-          className={`rounded-xl border px-4 py-3 text-sm font-medium ${
+          className={`animate-fade-up rounded-2xl border px-5 py-3.5 text-[15px] font-bold ${
             msg.type === "ok"
               ? "border-emerald-200 bg-emerald-50 text-emerald-800"
               : "border-red-200 bg-red-50 text-red-700"
@@ -170,146 +161,152 @@ export default function AdminSettingsPage() {
       )}
 
       {/* Portal Schedule & Announcement */}
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-        <h2 className="text-base font-bold text-slate-900">
-          1. Trạng thái Cổng đăng ký & Thông báo
-        </h2>
+      <section className="bento-card rounded-3xl p-6 space-y-5">
+        <div className="flex items-center gap-3">
+          <div className="h-7 w-1.5 rounded-full bg-[#c8102e]" />
+          <h2 className="text-xl font-extrabold text-[#111114]">
+            1. Trạng thái Cổng đăng ký & Thông báo
+          </h2>
+        </div>
 
-        <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+        <div
+          onClick={() => setIsPortalOpen(v => !v)}
+          className={cn(
+            "flex cursor-pointer items-center justify-between gap-4 rounded-2xl border-2 p-5 transition",
+            isPortalOpen
+              ? "border-emerald-500 bg-emerald-50/70"
+              : "border-black/10 bg-[#f6f5f2]"
+          )}
+        >
           <div>
-            <p className="text-sm font-bold text-slate-900">
+            <p className="text-base font-extrabold text-[#111114]">
               Mở cổng đăng ký cho sinh viên
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="mt-0.5 text-sm text-stone-600">
               Nếu tắt, sinh viên sẽ thấy thông báo cổng đang đóng và không thể nộp đơn.
             </p>
           </div>
-          <input
-            type="checkbox"
-            checked={isPortalOpen}
-            onChange={(e) => setIsPortalOpen(e.target.checked)}
-            className="h-5 w-5 rounded text-blue-600"
-          />
-        </label>
+          <button
+            type="button"
+            aria-pressed={isPortalOpen}
+            className={cn(
+              "relative inline-flex h-8 w-14 shrink-0 items-center rounded-full p-1 transition-colors",
+              isPortalOpen ? "bg-emerald-600" : "bg-stone-300"
+            )}
+          >
+            <span
+              className={cn(
+                "inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform",
+                isPortalOpen ? "translate-x-6" : "translate-x-0"
+              )}
+            />
+          </button>
+        </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-700">
+            <label className="mb-1.5 block text-sm font-bold text-stone-700">
               Tự động mở từ lúc (tùy chọn)
             </label>
-            <input
-              type="datetime-local"
-              value={openAt}
-              onChange={(e) => setOpenAt(e.target.value)}
-              className="min-h-[40px] w-full rounded-lg border border-slate-300 px-3 text-sm"
-            />
+            <input type="datetime-local" value={openAt} onChange={e => setOpenAt(e.target.value)} className={inputClass} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-700">
+            <label className="mb-1.5 block text-sm font-bold text-stone-700">
               Tự động đóng vào lúc (tùy chọn)
             </label>
-            <input
-              type="datetime-local"
-              value={closeAt}
-              onChange={(e) => setCloseAt(e.target.value)}
-              className="min-h-[40px] w-full rounded-lg border border-slate-300 px-3 text-sm"
-            />
+            <input type="datetime-local" value={closeAt} onChange={e => setCloseAt(e.target.value)} className={inputClass} />
           </div>
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-semibold text-slate-700">
-            Thông báo hiển thị trên Trang chủ Sinh viên
+          <label className="mb-1.5 block text-sm font-bold text-stone-700">
+            Thông báo hiển thị nổi bật trên Trang chủ Sinh viên
           </label>
           <textarea
             rows={3}
             value={announcement}
-            onChange={(e) => setAnnouncement(e.target.value)}
+            onChange={e => setAnnouncement(e.target.value)}
             placeholder="Nhập hướng dẫn hoặc thông báo lịch nộp hồ sơ..."
-            className="w-full rounded-lg border border-slate-300 p-3 text-sm"
+            className="w-full rounded-2xl border-2 border-stone-200 bg-[#f6f5f2] p-4 text-base focus:border-[#c8102e] focus:bg-white focus:outline-none"
           />
         </div>
       </section>
 
       {/* Dynamic Form Builder + Live Preview */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="bento-card rounded-3xl p-6 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-bold text-slate-900">
-                2. Câu hỏi mở rộng trên Phiếu đăng ký
+              <h2 className="text-xl font-extrabold text-[#111114]">
+                2. Câu hỏi mở rộng trên Phiếu
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="mt-0.5 text-sm text-stone-500">
                 4 trường cố định (Họ tên, MSSV, Giới tính, Ngày sinh) luôn có sẵn.
               </p>
             </div>
             <button
               type="button"
               onClick={addField}
-              className="flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+              className="flex items-center gap-1.5 rounded-2xl bg-[#111114] px-4 py-2.5 text-sm font-extrabold text-white hover:bg-[#c8102e] transition"
             >
-              <Plus className="h-3.5 w-3.5" /> Thêm trường
+              <Plus className="h-4 w-4" /> Thêm câu hỏi
             </button>
           </div>
 
           {fields.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-xs text-slate-500">
-              Chưa có trường mở rộng nào. Bấm &quot;Thêm trường&quot; để tạo câu hỏi mới.
+            <p className="rounded-2xl border-2 border-dashed border-stone-300 p-8 text-center text-[15px] font-medium text-stone-500">
+              Chưa có trường mở rộng nào. Bấm &quot;Thêm câu hỏi&quot; để tạo câu hỏi mới.
             </p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3.5">
               {fields.map((f, idx) => (
                 <div
                   key={f.id}
-                  className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-2.5"
+                  className="rounded-2xl border border-black/10 bg-[#f6f5f2] p-4 space-y-3"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-slate-500">
-                      #{idx + 1} • ID: {f.id}
+                    <span className="font-mono text-xs font-extrabold text-stone-500">
+                      #{idx + 1} · ID: {f.id}
                     </span>
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
                         onClick={() => moveField(idx, -1)}
                         disabled={idx === 0}
-                        className="rounded p-1 text-slate-500 hover:bg-slate-200 disabled:opacity-30"
+                        className="rounded-lg p-1.5 text-stone-600 hover:bg-stone-200 disabled:opacity-30"
                       >
-                        <ArrowUp className="h-3.5 w-3.5" />
+                        <ArrowUp className="h-4 w-4" />
                       </button>
                       <button
                         type="button"
                         onClick={() => moveField(idx, 1)}
                         disabled={idx === fields.length - 1}
-                        className="rounded p-1 text-slate-500 hover:bg-slate-200 disabled:opacity-30"
+                        className="rounded-lg p-1.5 text-stone-600 hover:bg-stone-200 disabled:opacity-30"
                       >
-                        <ArrowDown className="h-3.5 w-3.5" />
+                        <ArrowDown className="h-4 w-4" />
                       </button>
                       <button
                         type="button"
                         onClick={() => removeField(idx)}
-                        className="rounded p-1 text-red-500 hover:bg-red-100"
+                        className="rounded-lg p-1.5 text-red-600 hover:bg-red-100"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <input
                       type="text"
                       value={f.label}
-                      onChange={(e) => updateField(idx, { label: e.target.value })}
+                      onChange={e => updateField(idx, { label: e.target.value })}
                       placeholder="Tên nhãn câu hỏi"
-                      className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
+                      className="min-h-[42px] rounded-xl border border-black/15 bg-white px-3 text-[15px] font-medium"
                     />
                     <select
                       value={f.type}
-                      onChange={(e) =>
-                        updateField(idx, {
-                          type: e.target.value as DynamicField["type"],
-                        })
-                      }
-                      className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
+                      onChange={e => updateField(idx, { type: e.target.value as DynamicField["type"] })}
+                      className="min-h-[42px] rounded-xl border border-black/15 bg-white px-3 text-[15px] font-medium"
                     >
                       <option value="text">Văn bản (Text)</option>
                       <option value="number">Số (Number)</option>
@@ -322,34 +319,26 @@ export default function AdminSettingsPage() {
                     <input
                       type="text"
                       value={(f.options ?? []).join(", ")}
-                      onChange={(e) =>
-                        updateField(idx, {
-                          options: e.target.value.split(","),
-                        })
-                      }
+                      onChange={e => updateField(idx, { options: e.target.value.split(",") })}
                       placeholder="Các lựa chọn cách nhau bằng dấu phẩy (VD: Khoa Anh, Khoa Nhật)"
-                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs"
+                      className="min-h-[40px] w-full rounded-xl border border-black/15 bg-white px-3 text-sm"
                     />
                   ) : f.type !== "checkbox" ? (
                     <input
                       type="text"
                       value={f.placeholder ?? ""}
-                      onChange={(e) =>
-                        updateField(idx, { placeholder: e.target.value })
-                      }
+                      onChange={e => updateField(idx, { placeholder: e.target.value })}
                       placeholder="Gợi ý nhập liệu (placeholder)"
-                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs"
+                      className="min-h-[40px] w-full rounded-xl border border-black/15 bg-white px-3 text-sm"
                     />
                   ) : null}
 
-                  <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-700">
+                  <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-bold text-stone-700">
                     <input
                       type="checkbox"
                       checked={f.required}
-                      onChange={(e) =>
-                        updateField(idx, { required: e.target.checked })
-                      }
-                      className="h-4 w-4 rounded text-blue-600"
+                      onChange={e => updateField(idx, { required: e.target.checked })}
+                      className="h-4 w-4 rounded accent-[#c8102e]"
                     />
                     Bắt buộc sinh viên phải điền/chọn
                   </label>
@@ -360,67 +349,61 @@ export default function AdminSettingsPage() {
         </div>
 
         {/* Live Preview */}
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-          <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
-            <Eye className="h-4 w-4 text-blue-600" />
-            <h2 className="text-base font-bold text-slate-900">
-              Xem trước Phiếu đăng ký (Live Preview)
-            </h2>
+        <div className="bento-card overflow-hidden rounded-3xl">
+          <div className="obsidian-mesh flex items-center gap-2.5 px-6 py-4 text-white">
+            <Eye className="h-5 w-5 text-red-400" />
+            <h2 className="text-lg font-extrabold">Xem trước Phiếu đăng ký (Live Preview)</h2>
           </div>
 
-          <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
-            <div className="grid grid-cols-2 gap-2 opacity-60">
-              <div className="rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs">
-                Họ và tên *
-              </div>
-              <div className="rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs">
-                Mã sinh viên *
-              </div>
-              <div className="rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs">
-                Giới tính *
-              </div>
-              <div className="rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs">
-                Ngày sinh *
-              </div>
+          <div className="space-y-4 p-6">
+            <div className="grid grid-cols-2 gap-3 opacity-60">
+              {["Họ và tên *", "Mã sinh viên *", "Giới tính *", "Ngày sinh *"].map(lbl => (
+                <div
+                  key={lbl}
+                  className="rounded-2xl border border-black/10 bg-[#f6f5f2] px-3.5 py-2.5 text-sm font-semibold"
+                >
+                  {lbl}
+                </div>
+              ))}
             </div>
 
-            {fields.map((f) => (
+            {fields.map(f => (
               <div key={f.id}>
                 {f.type === "checkbox" ? (
-                  <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
-                    <input type="checkbox" disabled />
+                  <label className="flex items-center gap-2.5 rounded-2xl border border-black/12 bg-[#f6f5f2] px-4 py-3 text-[15px] font-semibold">
+                    <input type="checkbox" disabled className="h-4 w-4" />
                     <span>
-                      {f.label} {f.required && <span className="text-red-500">*</span>}
+                      {f.label} {f.required && <span className="text-[#c8102e]">*</span>}
                     </span>
                   </label>
                 ) : f.type === "select" ? (
                   <div>
-                    <p className="mb-1 text-xs font-semibold text-slate-700">
-                      {f.label} {f.required && <span className="text-red-500">*</span>}
+                    <p className="mb-1.5 text-sm font-bold text-stone-700">
+                      {f.label} {f.required && <span className="text-[#c8102e]">*</span>}
                     </p>
                     <select
                       disabled
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs"
+                      className="min-h-[44px] w-full rounded-2xl border border-black/15 bg-[#f6f5f2] px-3.5 text-[15px]"
                     >
                       <option>-- Chọn --</option>
                       {(f.options ?? [])
-                        .map((o) => o.trim())
+                        .map(o => o.trim())
                         .filter(Boolean)
-                        .map((o) => (
+                        .map(o => (
                           <option key={o}>{o}</option>
                         ))}
                     </select>
                   </div>
                 ) : (
                   <div>
-                    <p className="mb-1 text-xs font-semibold text-slate-700">
-                      {f.label} {f.required && <span className="text-red-500">*</span>}
+                    <p className="mb-1.5 text-sm font-bold text-stone-700">
+                      {f.label} {f.required && <span className="text-[#c8102e]">*</span>}
                     </p>
                     <input
                       type={f.type}
                       disabled
                       placeholder={f.placeholder || "Sinh viên nhập tại đây..."}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs"
+                      className="min-h-[44px] w-full rounded-2xl border border-black/15 bg-[#f6f5f2] px-3.5 text-[15px]"
                     />
                   </div>
                 )}

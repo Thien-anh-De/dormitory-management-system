@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { History, Loader2, X } from "lucide-react";
 
 interface AuditLog {
   id: string;
@@ -36,44 +36,50 @@ export default function AdminAuditLogsPage() {
   const [toDate, setToDate] = useState("");
   const [detailLog, setDetailLog] = useState<AuditLog | null>(null);
 
-  const loadLogs = useCallback(async () => {
-    setLoading(true);
+  useEffect(() => {
+    let active = true;
     const params = new URLSearchParams({ page: String(page), action: actionFilter });
     if (fromDate) params.set("from", fromDate);
     if (toDate) params.set("to", toDate);
 
-    const res = await fetch(`/api/admin/audit-logs?${params.toString()}`);
-    if (res.ok) {
-      const j = await res.json();
-      setLogs(j.logs ?? []);
-      setTotalPages(j.totalPages ?? 1);
-    }
-    setLoading(false);
+    fetch(`/api/admin/audit-logs?${params.toString()}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(j => {
+        if (!active || !j) return;
+        setLogs(j.logs ?? []);
+        setTotalPages(j.totalPages ?? 1);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [page, actionFilter, fromDate, toDate]);
 
-  useEffect(() => {
-    loadLogs();
-  }, [loadLogs]);
-
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Nhật ký hoạt động (Audit Logs)</h1>
-        <p className="text-xs text-slate-500">
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#111114]">
+          Nhật ký hoạt động (Audit Logs)
+        </h1>
+        <p className="mt-1 text-[15px] text-stone-500">
           Ghi nhận bất biến toàn bộ thao tác duyệt đơn, chuyển phòng, ghi đè và cấu hình hệ thống.
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
+      <div className="bento-card flex flex-wrap items-center gap-3 rounded-3xl p-4 sm:p-5">
         <select
           value={actionFilter}
-          onChange={(e) => {
+          onChange={e => {
+            setLoading(true);
             setPage(1);
             setActionFilter(e.target.value);
           }}
-          className="min-h-[38px] rounded-lg border border-slate-300 bg-white px-3 text-sm"
+          className="min-h-[46px] rounded-2xl border border-black/15 bg-[#f6f5f2] px-4 text-[15px] font-semibold focus:border-[#c8102e] focus:bg-white focus:outline-none"
         >
-          {ACTION_OPTIONS.map((a) => (
+          {ACTION_OPTIONS.map(a => (
             <option key={a} value={a}>
               {a === "ALL" ? "Tất cả hành động" : a}
             </option>
@@ -83,62 +89,65 @@ export default function AdminAuditLogsPage() {
         <input
           type="date"
           value={fromDate}
-          onChange={(e) => {
+          onChange={e => {
+            setLoading(true);
             setPage(1);
             setFromDate(e.target.value);
           }}
-          className="min-h-[38px] rounded-lg border border-slate-300 px-3 text-sm"
+          className="min-h-[46px] rounded-2xl border border-black/15 bg-[#f6f5f2] px-4 text-[15px] font-medium focus:border-[#c8102e] focus:bg-white focus:outline-none"
         />
-        <span className="text-xs text-slate-500">đến</span>
+        <span className="text-sm font-bold text-stone-500">đến</span>
         <input
           type="date"
           value={toDate}
-          onChange={(e) => {
+          onChange={e => {
+            setLoading(true);
             setPage(1);
             setToDate(e.target.value);
           }}
-          className="min-h-[38px] rounded-lg border border-slate-300 px-3 text-sm"
+          className="min-h-[46px] rounded-2xl border border-black/15 bg-[#f6f5f2] px-4 text-[15px] font-medium focus:border-[#c8102e] focus:bg-white focus:outline-none"
         />
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="bento-card overflow-x-auto rounded-3xl">
         {loading ? (
-          <div className="flex items-center justify-center p-8 text-sm text-slate-500">
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải...
+          <div className="flex items-center justify-center p-12 text-base font-semibold text-stone-500">
+            <Loader2 className="mr-2.5 h-5 w-5 animate-spin text-[#c8102e]" /> Đang tải nhật ký...
           </div>
         ) : logs.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
+          <div className="p-12 text-center text-base font-semibold text-stone-500">
+            <History className="mx-auto mb-3 h-10 w-10 text-stone-300" />
             Không có bản ghi nhật ký nào.
           </div>
         ) : (
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase text-slate-600">
+          <table className="w-full text-left text-[15px]">
+            <thead className="border-b border-black/10 bg-[#111114] text-xs font-extrabold uppercase tracking-wider text-white">
               <tr>
-                <th className="px-4 py-3">Thời gian</th>
-                <th className="px-4 py-3">Người thực hiện</th>
-                <th className="px-4 py-3">Hành động</th>
-                <th className="px-4 py-3">Đối tượng</th>
-                <th className="px-4 py-3 text-right">Chi tiết</th>
+                <th className="px-5 py-4">Thời gian</th>
+                <th className="px-5 py-4">Người thực hiện</th>
+                <th className="px-5 py-4">Hành động</th>
+                <th className="px-5 py-4">Đối tượng</th>
+                <th className="px-5 py-4 text-right">Chi tiết</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {logs.map((l) => (
-                <tr key={l.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+            <tbody className="divide-y divide-black/6">
+              {logs.map(l => (
+                <tr key={l.id} className="hover:bg-[#f6f5f2]">
+                  <td className="px-5 py-4 whitespace-nowrap font-mono text-sm text-stone-600">
                     {new Date(l.created_at).toLocaleString("vi-VN")}
                   </td>
-                  <td className="px-4 py-3 font-medium text-slate-900">{l.actor}</td>
-                  <td className="px-4 py-3">
-                    <span className="rounded bg-slate-100 px-2 py-0.5 font-mono font-semibold text-slate-800">
+                  <td className="px-5 py-4 font-bold text-[#111114]">{l.actor}</td>
+                  <td className="px-5 py-4">
+                    <span className="rounded-lg bg-stone-100 px-2.5 py-1 font-mono text-xs font-extrabold text-[#111114]">
                       {l.action}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{l.target_type}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-5 py-4 font-medium text-stone-600">{l.target_type}</td>
+                  <td className="px-5 py-4 text-right">
                     <button
                       type="button"
                       onClick={() => setDetailLog(l)}
-                      className="font-semibold text-blue-600 hover:underline"
+                      className="rounded-xl border border-black/12 bg-white px-3.5 py-1.5 text-sm font-bold text-[#c8102e] hover:bg-red-50 transition"
                     >
                       Xem JSON
                     </button>
@@ -150,24 +159,30 @@ export default function AdminAuditLogsPage() {
         )}
       </div>
 
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-slate-500">
+      <div className="flex items-center justify-between text-sm">
+        <span className="font-bold text-stone-600">
           Trang {page} / {totalPages}
         </span>
         <div className="flex gap-2">
           <button
             type="button"
             disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-semibold disabled:opacity-40"
+            onClick={() => {
+              setLoading(true);
+              setPage(p => p - 1);
+            }}
+            className="rounded-xl border border-black/12 bg-white px-4 py-2 font-bold text-[#111114] hover:bg-stone-100 disabled:opacity-40"
           >
             Trước
           </button>
           <button
             type="button"
             disabled={page >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-semibold disabled:opacity-40"
+            onClick={() => {
+              setLoading(true);
+              setPage(p => p + 1);
+            }}
+            className="rounded-xl border border-black/12 bg-white px-4 py-2 font-bold text-[#111114] hover:bg-stone-100 disabled:opacity-40"
           >
             Sau
           </button>
@@ -175,23 +190,23 @@ export default function AdminAuditLogsPage() {
       </div>
 
       {detailLog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h3 className="text-sm font-bold text-slate-900">
-                Chi tiết Snapshot — {detailLog.action}
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="animate-fade-up w-full max-w-lg overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="obsidian-mesh flex items-center justify-between px-6 py-4 text-white">
+              <h3 className="text-base font-extrabold">Chi tiết Snapshot — {detailLog.action}</h3>
               <button
                 type="button"
                 onClick={() => setDetailLog(null)}
-                className="rounded p-1 text-slate-400 hover:bg-slate-100"
+                className="rounded-xl bg-white/10 p-1.5 text-white/80 hover:bg-white/20"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
             </div>
-            <pre className="max-h-80 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-emerald-300">
-              {JSON.stringify(detailLog.details, null, 2)}
-            </pre>
+            <div className="p-5">
+              <pre className="max-h-96 overflow-auto rounded-2xl bg-[#111114] p-4 font-mono text-sm text-emerald-300">
+                {JSON.stringify(detailLog.details, null, 2)}
+              </pre>
+            </div>
           </div>
         </div>
       )}

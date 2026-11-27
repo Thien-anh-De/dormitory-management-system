@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Loader2, LogOut, Plus, X } from "lucide-react";
+import { CalendarRange, CheckCircle2, Loader2, LogOut, Plus, X } from "lucide-react";
 
 interface Wave {
   id: string;
@@ -30,8 +30,19 @@ export default function AdminWavesPage() {
   }, []);
 
   useEffect(() => {
-    loadWaves();
-  }, [loadWaves]);
+    let active = true;
+    fetch("/api/admin/waves")
+      .then(res => (res.ok ? res.json() : null))
+      .then(json => {
+        if (active && json) setWaves(json.waves ?? []);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -92,90 +103,93 @@ export default function AdminWavesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Quản lý Đợt đăng ký (Waves)</h1>
-        <p className="text-xs text-slate-500">
-          Mỗi thời điểm chỉ có tối đa 1 đợt đang hoạt động (Active). Khi kích hoạt đợt mới, đợt cũ sẽ tự động tắt.
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#111114]">
+          Quản lý Đợt đăng ký (Waves)
+        </h1>
+        <p className="mt-1 text-[15px] text-stone-500">
+          Mỗi thời điểm chỉ có tối đa 1 đợt đang hoạt động. Khi kích hoạt đợt mới, đợt cũ sẽ tự động tắt.
         </p>
       </div>
 
       {msg && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-medium text-blue-800">
+        <div className="animate-fade-up rounded-2xl border border-red-200 bg-red-50 px-5 py-3.5 text-[15px] font-bold text-[#c8102e]">
           {msg}
         </div>
       )}
 
       <form
         onSubmit={handleCreate}
-        className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row"
+        className="bento-card flex flex-col gap-3 rounded-3xl p-5 sm:flex-row"
       >
         <input
           type="text"
           required
           value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="Tên đợt mới (VD: HK1 2026-2027)..."
-          className="min-h-[42px] flex-1 rounded-lg border border-slate-300 px-3 text-sm focus:border-blue-500 focus:outline-none"
+          onChange={e => setNewName(e.target.value)}
+          placeholder="Tên đợt mới (VD: Học kỳ 1 năm 2026 - 2027)..."
+          className="min-h-[48px] flex-1 rounded-2xl border-2 border-stone-200 bg-[#f6f5f2] px-4 text-base font-medium focus:border-[#c8102e] focus:bg-white focus:outline-none"
         />
         <button
           type="submit"
           disabled={submitting}
-          className="flex min-h-[42px] items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-slate-400"
+          className="flex min-h-[48px] items-center justify-center gap-2 rounded-2xl bg-[#c8102e] px-6 text-[15px] font-extrabold text-white shadow-lg shadow-red-600/20 hover:bg-[#a50d26] disabled:bg-stone-400 transition"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-5 w-5" />
           Tạo đợt mới
         </button>
       </form>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="bento-card overflow-hidden rounded-3xl">
         {loading ? (
-          <div className="flex items-center justify-center p-8 text-sm text-slate-500">
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Đang tải...
+          <div className="flex items-center justify-center p-12 text-base font-semibold text-stone-500">
+            <Loader2 className="mr-2.5 h-5 w-5 animate-spin text-[#c8102e]" />
+            Đang tải danh sách đợt...
           </div>
         ) : waves.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
+          <div className="p-12 text-center text-base font-semibold text-stone-500">
+            <CalendarRange className="mx-auto mb-3 h-10 w-10 text-stone-300" />
             Chưa có đợt đăng ký nào.
           </div>
         ) : (
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase text-slate-600">
+          <table className="w-full text-left text-[15px]">
+            <thead className="border-b border-black/10 bg-[#111114] text-xs font-extrabold uppercase tracking-wider text-white">
               <tr>
-                <th className="px-4 py-3">Tên đợt</th>
-                <th className="px-4 py-3">Trạng thái</th>
-                <th className="px-4 py-3">Ngày tạo</th>
-                <th className="px-4 py-3 text-right">Thao tác</th>
+                <th className="px-5 py-4">Tên đợt đăng ký</th>
+                <th className="px-5 py-4">Trạng thái</th>
+                <th className="px-5 py-4">Ngày tạo</th>
+                <th className="px-5 py-4 text-right">Thao tác</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {waves.map((w) => (
-                <tr key={w.id} className="hover:bg-slate-50/70">
-                  <td className="px-4 py-3 font-semibold text-slate-900">{w.name}</td>
-                  <td className="px-4 py-3">
+            <tbody className="divide-y divide-black/6">
+              {waves.map(w => (
+                <tr key={w.id} className={w.is_active ? "bg-red-50/40" : "hover:bg-[#f6f5f2]"}>
+                  <td className="px-5 py-4 font-extrabold text-[#111114]">{w.name}</td>
+                  <td className="px-5 py-4">
                     {w.is_active ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3.5 py-1 text-sm font-extrabold text-emerald-800">
+                        <CheckCircle2 className="h-4 w-4" />
                         Đang hoạt động
                       </span>
                     ) : (
-                      <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                      <span className="rounded-full bg-stone-100 px-3.5 py-1 text-sm font-semibold text-stone-600">
                         Không hoạt động
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">
+                  <td className="px-5 py-4 font-mono text-sm font-medium text-stone-500">
                     {new Date(w.created_at).toLocaleDateString("vi-VN")}
                   </td>
-                  <td className="px-4 py-3 text-right space-x-2">
+                  <td className="px-5 py-4 text-right space-x-2">
                     {!w.is_active && (
                       <button
                         type="button"
                         disabled={submitting}
                         onClick={() => handleActivate(w.id)}
-                        className="rounded-lg border border-blue-600 px-3 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50"
+                        className="rounded-xl bg-[#111114] px-4 py-2 text-sm font-bold text-white hover:bg-[#c8102e] transition"
                       >
-                        Set Active
+                        Kích hoạt (Active)
                       </button>
                     )}
                     <button
@@ -185,9 +199,9 @@ export default function AdminWavesPage() {
                         setCheckoutWave(w);
                         setConfirmText("");
                       }}
-                      className="inline-flex items-center gap-1 rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-bold text-[#c8102e] hover:bg-red-50 transition"
                     >
-                      <LogOut className="h-3.5 w-3.5" />
+                      <LogOut className="h-4 w-4" />
                       Thanh lý đợt
                     </button>
                   </td>
@@ -199,42 +213,40 @@ export default function AdminWavesPage() {
       </div>
 
       {checkoutWave && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-red-700">
-                Xác nhận thanh lý hàng loạt
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="animate-fade-up w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-black/8 pb-3">
+              <h3 className="text-xl font-extrabold text-[#c8102e]">Xác nhận thanh lý hàng loạt</h3>
               <button
                 type="button"
                 onClick={() => setCheckoutWave(null)}
-                className="rounded p-1 text-slate-400 hover:bg-slate-100"
+                className="rounded-xl p-1.5 text-stone-400 hover:bg-stone-100"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
             </div>
-            <p className="text-xs text-slate-600">
+            <p className="text-[15px] text-stone-700 leading-relaxed">
               Thao tác này sẽ chuyển toàn bộ sinh viên đang ở hoặc chờ duyệt trong đợt{" "}
-              <strong>{checkoutWave.name}</strong> sang trạng thái{" "}
+              <strong className="text-[#111114]">{checkoutWave.name}</strong> sang trạng thái{" "}
               <strong>Đã trả phòng (CHECKED_OUT)</strong> và đặt lại sĩ số phòng.
             </p>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-700">
-                Nhập chính xác chữ <code className="text-red-600">XAC NHAN</code> để tiếp tục:
+              <label className="mb-1.5 block text-sm font-bold text-stone-700">
+                Nhập chính xác chữ <code className="font-mono text-[#c8102e]">XAC NHAN</code> để tiếp tục:
               </label>
               <input
                 type="text"
                 value={confirmText}
-                onChange={(e) => setConfirmText(e.target.value)}
+                onChange={e => setConfirmText(e.target.value)}
                 placeholder="XAC NHAN"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="min-h-[46px] w-full rounded-2xl border-2 border-stone-300 px-4 font-mono text-base font-bold uppercase focus:border-[#c8102e] focus:outline-none"
               />
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2.5">
               <button
                 type="button"
                 onClick={() => setCheckoutWave(null)}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold"
+                className="min-h-[44px] rounded-2xl border border-stone-300 px-5 text-[15px] font-bold text-stone-700"
               >
                 Hủy
               </button>
@@ -242,7 +254,7 @@ export default function AdminWavesPage() {
                 type="button"
                 disabled={submitting || confirmText.trim() !== "XAC NHAN"}
                 onClick={handleCheckoutWave}
-                className="rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white disabled:bg-slate-300"
+                className="min-h-[44px] rounded-2xl bg-[#c8102e] px-5 text-[15px] font-extrabold text-white disabled:bg-stone-300"
               >
                 Thanh lý toàn bộ đợt
               </button>

@@ -5,6 +5,8 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Grid2x2,
+  LayoutGrid,
   Lock,
   Pencil,
   Plus,
@@ -21,6 +23,7 @@ import { cn } from "@/lib/utils";
 
 export default function AdminRoomsPage() {
   const [tab, setTab] = useState<"GRID" | "MASTER">("GRID");
+  const [viewMode, setViewMode] = useState<"CARDS" | "COMPACT">("CARDS");
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [amenities, setAmenities] = useState<Amenity[]>([]);
   const [rooms, setRooms] = useState<PublicRoom[]>([]);
@@ -66,11 +69,27 @@ export default function AdminRoomsPage() {
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    let active = true;
+    fetch("/api/admin/rooms")
+      .then(res => (res.ok ? res.json() : null))
+      .then(json => {
+        if (!active || !json) return;
+        const bList = json.buildings ?? [];
+        setBuildings(bList);
+        setAmenities(json.amenities ?? []);
+        setRooms(json.rooms ?? []);
+        setBSort(bList.length + 1);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const buildingLockedMap = useMemo(
-    () => new Map(buildings.map((b) => [b.id, b.is_locked])),
+    () => new Map(buildings.map(b => [b.id, b.is_locked])),
     [buildings]
   );
 
@@ -91,7 +110,7 @@ export default function AdminRoomsPage() {
 
   const filteredRooms = useMemo(() => {
     const kw = search.trim().toLowerCase();
-    return rooms.filter((r) => {
+    return rooms.filter(r => {
       if (buildingFilter !== "ALL" && r.building_id !== buildingFilter) return false;
       if (kw && !r.room_code.toLowerCase().includes(kw)) return false;
       if (statusFilter !== "ALL") {
@@ -122,8 +141,8 @@ export default function AdminRoomsPage() {
       floors.set(r.floor, arr);
     }
     return buildings
-      .filter((b) => byB.has(b.id))
-      .map((b) => ({
+      .filter(b => byB.has(b.id))
+      .map(b => ({
         building: b,
         floors: Array.from(byB.get(b.id)!.entries())
           .sort(([f1], [f2]) => f1 - f2)
@@ -132,7 +151,7 @@ export default function AdminRoomsPage() {
   }, [buildings, filteredRooms]);
 
   function toggleRoomSelect(id: string) {
-    setSelectedIds((prev) => {
+    setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -141,9 +160,9 @@ export default function AdminRoomsPage() {
   }
 
   function selectRoomGroup(list: PublicRoom[]) {
-    setSelectedIds((prev) => {
+    setSelectedIds(prev => {
       const next = new Set(prev);
-      const allSelected = list.every((r) => next.has(r.id));
+      const allSelected = list.every(r => next.has(r.id));
       for (const r of list) {
         if (allSelected) next.delete(r.id);
         else next.add(r.id);
@@ -245,25 +264,26 @@ export default function AdminRoomsPage() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6 pb-28">
+      {/* Header + Actions */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#111114]">
             Quản lý Phòng ({rooms.length}) & Danh mục
           </h1>
-          <p className="text-xs text-slate-500">
-            Tạo phòng hàng loạt, khóa phòng theo tầng/tòa và cấu hình tiện ích.
+          <p className="mt-1 text-[15px] text-stone-500">
+            Tạo phòng hàng loạt, khóa/mở phòng theo tầng/tòa và cấu hình tiện ích.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="inline-flex rounded-2xl border border-black/10 bg-white p-1 shadow-xs">
             <button
               type="button"
               onClick={() => setTab("GRID")}
               className={cn(
-                "rounded-md px-3 py-1.5 text-xs font-semibold",
-                tab === "GRID" ? "bg-blue-600 text-white" : "text-slate-600"
+                "rounded-xl px-4 py-2 text-sm sm:text-[15px] font-bold transition",
+                tab === "GRID" ? "bg-[#111114] text-white shadow-sm" : "text-stone-600 hover:text-[#111114]"
               )}
             >
               Bản đồ phòng
@@ -272,8 +292,8 @@ export default function AdminRoomsPage() {
               type="button"
               onClick={() => setTab("MASTER")}
               className={cn(
-                "rounded-md px-3 py-1.5 text-xs font-semibold",
-                tab === "MASTER" ? "bg-blue-600 text-white" : "text-slate-600"
+                "rounded-xl px-4 py-2 text-sm sm:text-[15px] font-bold transition",
+                tab === "MASTER" ? "bg-[#111114] text-white shadow-sm" : "text-stone-600 hover:text-[#111114]"
               )}
             >
               Tòa nhà & Tiện ích
@@ -287,7 +307,7 @@ export default function AdminRoomsPage() {
               setModalBuildingId(undefined);
               setShowBulkModal(true);
             }}
-            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:bg-slate-400"
+            className="flex min-h-[46px] items-center gap-2 rounded-2xl bg-[#c8102e] px-5 py-2.5 text-[15px] font-extrabold text-white shadow-lg shadow-red-600/25 hover:bg-[#a50d26] disabled:bg-stone-400 disabled:shadow-none transition"
           >
             <Sparkles className="h-4 w-4" />
             Thêm / Tạo phòng
@@ -297,221 +317,129 @@ export default function AdminRoomsPage() {
 
       {tab === "GRID" ? (
         <>
-          {/* Quick Status Strip */}
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+          {/* 5-Tile Bento Status Filter */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             {[
-              { key: "ALL", label: "Tổng số phòng", count: roomCounts.total, cls: "border-slate-200 bg-white text-slate-900" },
+              { key: "ALL", label: "Tổng số phòng", count: roomCounts.total, cls: "border-black/10 bg-white text-[#111114]" },
               { key: "AVAILABLE", label: "Còn trống", count: roomCounts.available, cls: "border-emerald-200 bg-emerald-50 text-emerald-900" },
               { key: "FULL", label: "Đã đầy", count: roomCounts.full, cls: "border-red-200 bg-red-50 text-red-900" },
               { key: "OVER", label: "Vượt sức chứa", count: roomCounts.over, cls: "border-amber-200 bg-amber-50 text-amber-900" },
-              { key: "LOCKED", label: "Khóa / Bảo trì", count: roomCounts.locked, cls: "border-slate-300 bg-slate-100 text-slate-800" },
-            ].map((item) => (
+              { key: "LOCKED", label: "Khóa / Bảo trì", count: roomCounts.locked, cls: "border-stone-300 bg-stone-200/70 text-stone-800" },
+            ].map(item => (
               <button
                 key={item.key}
                 type="button"
                 onClick={() => setStatusFilter(item.key as typeof statusFilter)}
                 className={cn(
-                  "rounded-xl border p-3 text-left transition shadow-sm",
+                  "rounded-2xl border p-4 text-left transition shadow-xs hover:-translate-y-0.5",
                   item.cls,
-                  statusFilter === item.key && "ring-2 ring-blue-600"
+                  statusFilter === item.key && "ring-2 ring-[#c8102e] shadow-md"
                 )}
               >
-                <p className="text-xs font-semibold opacity-80">{item.label}</p>
-                <p className="mt-0.5 text-xl font-bold">{item.count}</p>
+                <p className="text-sm font-bold opacity-80">{item.label}</p>
+                <p className="mt-1 font-mono text-3xl font-extrabold tabular-nums">{item.count}</p>
               </button>
             ))}
           </div>
 
-          {/* Filter + Legend */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
-            <div className="flex flex-wrap items-center gap-2.5">
+          {/* Search, Building Select & View Mode Bar */}
+          <div className="bento-card flex flex-wrap items-center justify-between gap-4 rounded-3xl p-4 sm:p-5">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
                 <input
                   type="text"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={e => setSearch(e.target.value)}
                   placeholder="Tìm mã phòng..."
-                  className="min-h-[40px] rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm font-medium text-slate-900"
+                  className="min-h-[46px] rounded-2xl border border-black/12 bg-[#f6f5f2] pl-10 pr-4 text-[15px] font-medium focus:border-[#c8102e] focus:bg-white focus:outline-none"
                 />
               </div>
 
               <select
                 value={buildingFilter}
-                onChange={(e) => setBuildingFilter(e.target.value)}
-                className="min-h-[40px] rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900"
+                onChange={e => setBuildingFilter(e.target.value)}
+                className="min-h-[46px] rounded-2xl border border-black/12 bg-[#f6f5f2] px-4 text-[15px] font-semibold focus:border-[#c8102e] focus:bg-white focus:outline-none"
               >
                 <option value="ALL">Tất cả tòa nhà</option>
-                {buildings.map((b) => (
+                {buildings.map(b => (
                   <option key={b.id} value={b.id}>
                     {b.name} ({b.code})
                   </option>
                 ))}
               </select>
+
+              <div className="inline-flex rounded-2xl bg-[#f6f5f2] p-1 border border-black/8">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("CARDS")}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-bold transition",
+                    viewMode === "CARDS" ? "bg-white text-[#111114] shadow-xs" : "text-stone-500"
+                  )}
+                >
+                  <LayoutGrid className="h-4 w-4" /> Chi tiết
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("COMPACT")}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-bold transition",
+                    viewMode === "COMPACT" ? "bg-white text-[#111114] shadow-xs" : "text-stone-500"
+                  )}
+                >
+                  <Grid2x2 className="h-4 w-4" /> Ma trận 300P
+                </button>
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-slate-700">
-              <span className="flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded bg-emerald-500" /> Còn trống
+            <div className="flex flex-wrap items-center gap-4 text-sm font-bold text-stone-700">
+              <span className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-full bg-emerald-500" /> Còn trống
               </span>
-              <span className="flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded bg-red-500" /> Đầy
+              <span className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-full bg-[#c8102e]" /> Đầy
               </span>
-              <span className="flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded bg-amber-400" /> Vượt sức chứa
+              <span className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-full bg-amber-400" /> Vượt chỗ
               </span>
-              <span className="flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded bg-slate-500" /> Đang khóa / Bảo trì
+              <span className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-full bg-stone-500" /> Khóa/Bảo trì
               </span>
             </div>
           </div>
 
-          {/* Bulk Action Bar */}
-          {selectedIds.size > 0 && (
-            <div className="sticky top-16 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 shadow-md">
-              <span className="text-xs font-bold text-blue-900">
-                Đã chọn {selectedIds.size} phòng:
-              </span>
-              <button
-                type="button"
-                onClick={() => runBulkPatch({ updates: { is_locked: true } })}
-                className="flex items-center gap-1 rounded-lg bg-slate-700 px-2.5 py-1.5 text-xs font-semibold text-white"
-              >
-                <Lock className="h-3.5 w-3.5" /> Khóa
-              </button>
-              <button
-                type="button"
-                onClick={() => runBulkPatch({ updates: { is_locked: false } })}
-                className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white"
-              >
-                <Unlock className="h-3.5 w-3.5" /> Mở khóa
-              </button>
-              <select
-                onChange={(e) => {
-                  if (!e.target.value) return;
-                  const val = e.target.value === "AUTO" ? null : e.target.value;
-                  runBulkPatch({ updates: { fixed_gender: val } });
-                  e.target.value = "";
-                }}
-                className="rounded-lg border border-blue-300 bg-white px-2 py-1.5 text-xs"
-              >
-                <option value="">-- Cố định giới tính --</option>
-                <option value="AUTO">Tự động</option>
-                <option value="MALE">Nam cố định</option>
-                <option value="FEMALE">Nữ cố định</option>
-              </select>
-
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  placeholder="Giá mới"
-                  value={bulkPrice}
-                  onChange={(e) => setBulkPrice(e.target.value)}
-                  className="w-24 rounded-lg border border-blue-300 bg-white px-2 py-1 text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (bulkPrice) runBulkPatch({ updates: { price: Number(bulkPrice) } });
-                  }}
-                  className="rounded-lg bg-blue-600 px-2 py-1 text-xs font-semibold text-white"
-                >
-                  Đổi giá
-                </button>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  placeholder="Sức chứa"
-                  value={bulkCapacity}
-                  onChange={(e) => setBulkCapacity(e.target.value)}
-                  className="w-20 rounded-lg border border-blue-300 bg-white px-2 py-1 text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (bulkCapacity !== "")
-                      runBulkPatch({ updates: { capacity: Number(bulkCapacity) } });
-                  }}
-                  className="rounded-lg bg-blue-600 px-2 py-1 text-xs font-semibold text-white"
-                >
-                  Đổi chỗ
-                </button>
-              </div>
-
-              {amenities.length > 0 && (
-                <div className="flex items-center gap-1">
-                  <select
-                    value={bulkAmenityId}
-                    onChange={(e) => setBulkAmenityId(e.target.value)}
-                    className="rounded-lg border border-blue-300 bg-white px-2 py-1 text-xs"
-                  >
-                    <option value="">-- Tiện ích --</option>
-                    {amenities.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      bulkAmenityId && runBulkPatch({ add_amenity_ids: [bulkAmenityId] })
-                    }
-                    className="rounded-lg bg-emerald-600 px-2 py-1 text-xs font-semibold text-white"
-                  >
-                    +Gán
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      bulkAmenityId && runBulkPatch({ remove_amenity_ids: [bulkAmenityId] })
-                    }
-                    className="rounded-lg bg-red-600 px-2 py-1 text-xs font-semibold text-white"
-                  >
-                    -Gỡ
-                  </button>
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setSelectedIds(new Set())}
-                className="ml-auto text-xs font-semibold text-slate-600 underline"
-              >
-                Bỏ chọn
-              </button>
-            </div>
-          )}
-
           {/* 300 Rooms Grid */}
           {loading ? (
-            <div className="p-8 text-center text-sm text-slate-500">Đang tải...</div>
+            <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} className="skeleton h-28 rounded-2xl" />
+              ))}
+            </div>
           ) : grouped.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
-              Chưa có phòng nào. Hãy bấm &quot;Tạo phòng hàng loạt&quot; để khởi tạo!
+            <div className="bento-card rounded-3xl border-2 border-dashed border-black/15 p-12 text-center text-base font-bold text-stone-500">
+              Chưa có phòng nào. Hãy bấm &quot;Thêm / Tạo phòng&quot; để khởi tạo!
             </div>
           ) : (
-            <div className="space-y-5">
+            <div className="space-y-6">
               {grouped.map(({ building, floors }) => {
-                const buildingRooms = floors.flatMap((f) => f.rooms);
+                const buildingRooms = floors.flatMap(f => f.rooms);
                 return (
-                  <div
-                    key={building.id}
-                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-base font-bold text-slate-900">
-                          {building.name} ({building.code})
+                  <div key={building.id} className="bento-card rounded-3xl p-5 sm:p-6 space-y-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/8 pb-4">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="rounded-xl bg-[#111114] px-3 py-1 font-mono text-base font-extrabold text-white">
+                          {building.code}
+                        </span>
+                        <h2 className="text-xl font-extrabold text-[#111114]">
+                          {building.name}
                         </h2>
                         <button
                           type="button"
                           onClick={() => selectRoomGroup(buildingRooms)}
-                          className="rounded border border-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                          className="rounded-xl border border-black/12 bg-[#f6f5f2] px-3 py-1.5 text-sm font-bold text-stone-700 hover:bg-stone-200 transition"
                         >
-                          Chọn cả tòa
+                          Chọn cả tòa ({buildingRooms.length})
                         </button>
                       </div>
 
@@ -519,19 +447,19 @@ export default function AdminRoomsPage() {
                         type="button"
                         onClick={() => handleToggleBuildingLock(building)}
                         className={cn(
-                          "flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold",
+                          "flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition",
                           building.is_locked
-                            ? "bg-red-100 text-red-700"
-                            : "bg-slate-100 text-slate-700"
+                            ? "bg-red-100 text-[#c8102e] hover:bg-red-200"
+                            : "bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
                         )}
                       >
                         {building.is_locked ? (
                           <>
-                            <Lock className="h-3.5 w-3.5" /> Tòa đang khóa (Bấm mở)
+                            <Lock className="h-4 w-4" /> Tòa đang khóa (Bấm mở)
                           </>
                         ) : (
                           <>
-                            <Unlock className="h-3.5 w-3.5" /> Đang mở (Bấm khóa tòa)
+                            <Unlock className="h-4 w-4" /> Tòa đang mở (Bấm khóa)
                           </>
                         )}
                       </button>
@@ -541,39 +469,46 @@ export default function AdminRoomsPage() {
                       const floorKey = `${building.id}-${floor}`;
                       const collapsed = collapsedFloors.has(floorKey);
                       return (
-                        <div key={floorKey} className="space-y-2">
-                          <div className="flex items-center gap-2">
+                        <div key={floorKey} className="space-y-3">
+                          <div className="flex items-center gap-3">
                             <button
                               type="button"
                               onClick={() =>
-                                setCollapsedFloors((prev) => {
+                                setCollapsedFloors(prev => {
                                   const next = new Set(prev);
                                   if (next.has(floorKey)) next.delete(floorKey);
                                   else next.add(floorKey);
                                   return next;
                                 })
                               }
-                              className="flex items-center gap-1 text-xs font-bold text-slate-700"
+                              className="flex items-center gap-1.5 rounded-xl bg-[#f6f5f2] px-3 py-1.5 text-[15px] font-extrabold text-[#111114] hover:bg-stone-200 transition"
                             >
                               {collapsed ? (
                                 <ChevronRight className="h-4 w-4" />
                               ) : (
                                 <ChevronDown className="h-4 w-4" />
                               )}
-                              Tầng {floor} ({fRooms.length})
+                              Tầng {floor} ({fRooms.length} phòng)
                             </button>
                             <button
                               type="button"
                               onClick={() => selectRoomGroup(fRooms)}
-                              className="text-[11px] text-blue-600 hover:underline"
+                              className="text-sm font-bold text-[#c8102e] hover:underline"
                             >
-                              Chọn tầng
+                              Chọn tầng này
                             </button>
                           </div>
 
                           {!collapsed && (
-                            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                              {fRooms.map((r) => {
+                            <div
+                              className={cn(
+                                "grid gap-3",
+                                viewMode === "COMPACT"
+                                  ? "grid-cols-3 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10"
+                                  : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"
+                              )}
+                            >
+                              {fRooms.map(r => {
                                 const isLocked = building.is_locked || r.is_locked || r.capacity === 0;
                                 const isOver = r.current_count > r.capacity && r.capacity > 0;
                                 const isFull = r.capacity > 0 && r.current_count === r.capacity;
@@ -584,22 +519,22 @@ export default function AdminRoomsPage() {
                                   <div
                                     key={r.id}
                                     className={cn(
-                                      "relative rounded-xl border p-3 text-sm transition cursor-pointer shadow-xs hover:shadow-md",
+                                      "relative rounded-2xl border p-3.5 transition cursor-pointer hover:shadow-md",
                                       isLocked
-                                        ? "border-slate-300 bg-slate-100 text-slate-800"
+                                        ? "border-stone-300 bg-stone-100 text-stone-700"
                                         : isOver
                                         ? "border-amber-300 bg-amber-50 text-amber-950"
                                         : isFull
                                         ? "border-red-300 bg-red-50 text-red-950"
-                                        : "border-emerald-300 bg-emerald-50 text-emerald-950",
-                                      checked && "ring-2 ring-blue-600"
+                                        : "border-emerald-300 bg-emerald-50/80 text-emerald-950",
+                                      checked && "ring-2 ring-[#c8102e] shadow-md"
                                     )}
                                   >
                                     <div className="flex items-center justify-between gap-1">
                                       <button
                                         type="button"
                                         onClick={() => setDrawerRoom(r)}
-                                        className="text-sm font-bold text-slate-900 hover:text-blue-700 hover:underline"
+                                        className="font-mono text-base font-extrabold text-[#111114] hover:text-[#c8102e] hover:underline"
                                       >
                                         {r.room_code}
                                       </button>
@@ -607,50 +542,51 @@ export default function AdminRoomsPage() {
                                         type="checkbox"
                                         checked={checked}
                                         onChange={() => toggleRoomSelect(r.id)}
-                                        className="h-4 w-4 rounded text-blue-600"
+                                        className="h-4 w-4 rounded accent-[#c8102e] cursor-pointer"
                                       />
                                     </div>
-                                    <div
-                                      onClick={() => setDrawerRoom(r)}
-                                      className="mt-2 space-y-1.5"
-                                    >
-                                      <div className="flex items-center justify-between text-xs font-semibold">
-                                        <span className="text-slate-800">
-                                          {r.current_count}/{r.capacity} chỗ
-                                        </span>
-                                        <span
-                                          className={cn(
-                                            "rounded px-1.5 py-0.5 text-[11px] font-bold",
-                                            r.gender_type === "MALE"
-                                              ? "bg-blue-100 text-blue-800"
-                                              : r.gender_type === "FEMALE"
-                                              ? "bg-pink-100 text-pink-800"
-                                              : "bg-white/80 text-slate-700"
-                                          )}
-                                        >
-                                          {r.gender_type === "MALE"
-                                            ? "Nam"
-                                            : r.gender_type === "FEMALE"
-                                            ? "Nữ"
-                                            : "Trống"}
-                                        </span>
+
+                                    {viewMode === "CARDS" ? (
+                                      <div onClick={() => setDrawerRoom(r)} className="mt-2.5 space-y-2">
+                                        <div className="flex items-center justify-between text-sm font-bold">
+                                          <span className="tabular-nums">
+                                            {r.current_count}/{r.capacity} chỗ
+                                          </span>
+                                          <span
+                                            className={cn(
+                                              "rounded-lg px-2 py-0.5 text-xs font-extrabold",
+                                              r.gender_type === "MALE"
+                                                ? "bg-sky-100 text-sky-800"
+                                                : r.gender_type === "FEMALE"
+                                                ? "bg-rose-100 text-rose-800"
+                                                : "bg-white/90 text-stone-700"
+                                            )}
+                                          >
+                                            {r.gender_type === "MALE" ? "Nam" : r.gender_type === "FEMALE" ? "Nữ" : "Trống"}
+                                          </span>
+                                        </div>
+                                        <div className="h-2 w-full overflow-hidden rounded-full bg-white/80">
+                                          <div
+                                            className={cn(
+                                              "h-full rounded-full",
+                                              isLocked
+                                                ? "bg-stone-400"
+                                                : isOver
+                                                ? "bg-amber-500"
+                                                : isFull
+                                                ? "bg-[#c8102e]"
+                                                : "bg-emerald-600"
+                                            )}
+                                            style={{ width: `${pct}%` }}
+                                          />
+                                        </div>
                                       </div>
-                                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/80">
-                                        <div
-                                          className={cn(
-                                            "h-full rounded-full",
-                                            isLocked
-                                              ? "bg-slate-400"
-                                              : isOver
-                                              ? "bg-amber-500"
-                                              : isFull
-                                              ? "bg-red-500"
-                                              : "bg-emerald-600"
-                                          )}
-                                          style={{ width: `${pct}%` }}
-                                        />
+                                    ) : (
+                                      <div onClick={() => setDrawerRoom(r)} className="mt-1.5 flex items-center justify-between text-xs font-extrabold">
+                                        <span>{r.current_count}/{r.capacity}</span>
+                                        <span>{r.gender_type === "MALE" ? "Nam" : r.gender_type === "FEMALE" ? "Nữ" : "—"}</span>
                                       </div>
-                                    </div>
+                                    )}
                                   </div>
                                 );
                               })}
@@ -664,247 +600,353 @@ export default function AdminRoomsPage() {
               })}
             </div>
           )}
+
+          {/* ── FLOATING OBSIDIAN ACTION DOCK ── */}
+          {selectedIds.size > 0 && (
+            <div className="fixed bottom-4 left-4 right-4 z-30 mx-auto max-w-6xl animate-fade-up rounded-3xl border border-white/15 bg-[#111114]/95 p-4 text-white shadow-2xl backdrop-blur-md">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="rounded-xl bg-[#c8102e] px-3.5 py-1.5 text-sm font-extrabold text-white">
+                  Đã chọn {selectedIds.size} phòng
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => runBulkPatch({ updates: { is_locked: true } })}
+                  className="flex items-center gap-1.5 rounded-xl bg-white/12 px-3.5 py-2 text-sm font-bold text-white hover:bg-white/20"
+                >
+                  <Lock className="h-4 w-4" /> Khóa
+                </button>
+                <button
+                  type="button"
+                  onClick={() => runBulkPatch({ updates: { is_locked: false } })}
+                  className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-emerald-500"
+                >
+                  <Unlock className="h-4 w-4" /> Mở khóa
+                </button>
+
+                <select
+                  onChange={e => {
+                    if (!e.target.value) return;
+                    const val = e.target.value === "AUTO" ? null : e.target.value;
+                    runBulkPatch({ updates: { fixed_gender: val } });
+                    e.target.value = "";
+                  }}
+                  className="min-h-[38px] rounded-xl border border-white/20 bg-white px-3 text-sm font-semibold text-[#111114]"
+                >
+                  <option value="">-- Cố định giới tính --</option>
+                  <option value="AUTO">Tự động</option>
+                  <option value="MALE">Nam cố định</option>
+                  <option value="FEMALE">Nữ cố định</option>
+                </select>
+
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    placeholder="Giá mới"
+                    value={bulkPrice}
+                    onChange={e => setBulkPrice(e.target.value)}
+                    className="min-h-[38px] w-28 rounded-xl bg-white px-3 text-sm font-semibold text-[#111114]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => bulkPrice && runBulkPatch({ updates: { price: Number(bulkPrice) } })}
+                    className="min-h-[38px] rounded-xl bg-[#c8102e] px-3 text-sm font-bold text-white hover:bg-[#a50d26]"
+                  >
+                    Đổi giá
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    placeholder="Chỗ"
+                    value={bulkCapacity}
+                    onChange={e => setBulkCapacity(e.target.value)}
+                    className="min-h-[38px] w-20 rounded-xl bg-white px-3 text-sm font-semibold text-[#111114]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => bulkCapacity !== "" && runBulkPatch({ updates: { capacity: Number(bulkCapacity) } })}
+                    className="min-h-[38px] rounded-xl bg-[#c8102e] px-3 text-sm font-bold text-white hover:bg-[#a50d26]"
+                  >
+                    Đổi chỗ
+                  </button>
+                </div>
+
+                {amenities.length > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      value={bulkAmenityId}
+                      onChange={e => setBulkAmenityId(e.target.value)}
+                      className="min-h-[38px] rounded-xl bg-white px-2.5 text-sm font-semibold text-[#111114]"
+                    >
+                      <option value="">-- Tiện ích --</option>
+                      {amenities.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => bulkAmenityId && runBulkPatch({ add_amenity_ids: [bulkAmenityId] })}
+                      className="min-h-[38px] rounded-xl bg-emerald-600 px-3 text-sm font-bold text-white"
+                    >
+                      +Gán
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => bulkAmenityId && runBulkPatch({ remove_amenity_ids: [bulkAmenityId] })}
+                      className="min-h-[38px] rounded-xl bg-red-600 px-3 text-sm font-bold text-white"
+                    >
+                      -Gỡ
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="ml-auto rounded-xl border border-white/20 px-3.5 py-2 text-sm font-bold text-white/80 hover:bg-white/10"
+                >
+                  Bỏ chọn
+                </button>
+              </div>
+            </div>
+          )}
         </>
       ) : (
         /* Master Data Tab */
-        <div className="space-y-4">
+        <div className="space-y-5">
           {masterError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            <div className="animate-shake rounded-2xl border border-red-200 bg-red-50 px-5 py-3.5 text-[15px] font-bold text-red-700">
               {masterError}
             </div>
           )}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Buildings */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Danh mục Tòa nhà / Dãy</h2>
-              <p className="text-xs text-slate-600">
-                Bước 1: Tạo tòa nhà → Bước 2: Bấm &quot;+ Tạo phòng&quot; ngay trên tòa nhà đó.
-              </p>
+            {/* Buildings */}
+            <div className="bento-card rounded-3xl p-6 space-y-5">
+              <div>
+                <h2 className="text-xl font-extrabold text-[#111114]">Danh mục Tòa nhà / Dãy</h2>
+                <p className="mt-1 text-sm text-stone-500">
+                  Bước 1: Tạo tòa nhà → Bước 2: Bấm &quot;+ Tạo phòng&quot; ngay trên tòa nhà đó.
+                </p>
+              </div>
+              <form onSubmit={handleCreateBuilding} className="grid grid-cols-1 gap-3 sm:grid-cols-12 items-end">
+                <div className="sm:col-span-3">
+                  <label className="mb-1 block text-xs font-extrabold uppercase text-stone-600">
+                    Mã tòa <span className="text-[#c8102e]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={bCode}
+                    onChange={e => setBCode(e.target.value)}
+                    placeholder="VD: D10"
+                    className="min-h-[46px] w-full rounded-2xl border border-black/15 bg-[#f6f5f2] px-3.5 text-base font-mono uppercase focus:border-[#c8102e] focus:bg-white focus:outline-none"
+                  />
+                </div>
+                <div className="sm:col-span-4">
+                  <label className="mb-1 block text-xs font-extrabold uppercase text-stone-600">
+                    Tên tòa nhà <span className="text-[#c8102e]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={bName}
+                    onChange={e => setBName(e.target.value)}
+                    placeholder="VD: Nhà D10"
+                    className="min-h-[46px] w-full rounded-2xl border border-black/15 bg-[#f6f5f2] px-3.5 text-base focus:border-[#c8102e] focus:bg-white focus:outline-none"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-extrabold uppercase text-stone-600">Thứ tự</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={bSort}
+                    onChange={e => setBSort(Number(e.target.value))}
+                    className="min-h-[46px] w-full rounded-2xl border border-black/15 bg-[#f6f5f2] px-3 text-base focus:border-[#c8102e] focus:bg-white focus:outline-none"
+                  />
+                </div>
+                <div className="sm:col-span-3">
+                  <button
+                    type="submit"
+                    className="flex min-h-[46px] w-full items-center justify-center gap-1.5 rounded-2xl bg-[#c8102e] px-4 text-sm font-extrabold text-white hover:bg-[#a50d26] transition"
+                  >
+                    <Plus className="h-4 w-4" /> Thêm tòa
+                  </button>
+                </div>
+              </form>
+
+              <ul className="divide-y divide-black/8">
+                {buildings.map(b => {
+                  const countInBuilding = rooms.filter(r => r.building_id === b.id).length;
+                  const isEditing = editingBuildingId === b.id;
+                  return (
+                    <li key={b.id} className="flex flex-wrap items-center justify-between gap-3 py-4 text-[15px]">
+                      {isEditing ? (
+                        <div className="flex flex-1 flex-wrap items-center gap-2">
+                          <span className="font-mono font-extrabold text-[#111114]">{b.code}</span>
+                          <input
+                            type="text"
+                            value={editBName}
+                            onChange={e => setEditBName(e.target.value)}
+                            className="rounded-xl border border-black/15 px-3 py-1.5 text-[15px]"
+                          />
+                          <input
+                            type="number"
+                            min={1}
+                            value={editBSort}
+                            onChange={e => setEditBSort(Number(e.target.value))}
+                            className="w-20 rounded-xl border border-black/15 px-3 py-1.5 text-[15px]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSaveBuildingEdit(b.id)}
+                            className="rounded-xl bg-emerald-600 p-2 text-white"
+                            title="Lưu"
+                          >
+                            <Check className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingBuildingId(null)}
+                            className="rounded-xl bg-stone-200 p-2 text-stone-700"
+                            title="Hủy"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="rounded-lg bg-[#111114] px-2.5 py-0.5 font-mono text-sm font-extrabold text-white">
+                            {b.code}
+                          </span>{" "}
+                          <span className="ml-1 font-extrabold text-[#111114]">{b.name}</span>
+                          <p className="mt-1 text-sm font-medium text-stone-500">
+                            {countInBuilding} phòng · Thứ tự hiển thị #{b.sort_order}
+                          </p>
+                        </div>
+                      )}
+
+                      {!isEditing && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalBuildingId(b.id);
+                              setShowBulkModal(true);
+                            }}
+                            className="flex items-center gap-1 rounded-xl bg-red-50 px-3 py-2 text-sm font-extrabold text-[#c8102e] hover:bg-red-100"
+                          >
+                            <Plus className="h-4 w-4" /> Tạo phòng
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingBuildingId(b.id);
+                              setEditBName(b.name);
+                              setEditBSort(b.sort_order);
+                            }}
+                            className="rounded-xl p-2 text-stone-600 hover:bg-stone-100"
+                            title="Sửa tên / thứ tự"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleBuildingLock(b)}
+                            className={cn(
+                              "rounded-xl px-3 py-2 text-sm font-bold",
+                              b.is_locked ? "bg-red-100 text-[#c8102e]" : "bg-emerald-100 text-emerald-800"
+                            )}
+                          >
+                            {b.is_locked ? "Đang khóa" : "Đang mở"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteBuilding(b.id)}
+                            className="rounded-xl p-2 text-red-600 hover:bg-red-50"
+                            title="Xóa tòa"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
-            <form onSubmit={handleCreateBuilding} className="grid grid-cols-1 gap-2.5 sm:grid-cols-12 items-end">
-              <div className="sm:col-span-3">
-                <label className="mb-1 block text-xs font-semibold text-slate-700">
-                  Mã tòa <span className="text-red-500">*</span>
-                </label>
+
+            {/* Amenities */}
+            <div className="bento-card rounded-3xl p-6 space-y-5">
+              <div>
+                <h2 className="text-xl font-extrabold text-[#111114]">Danh mục Tiện ích</h2>
+                <p className="mt-1 text-sm text-stone-500">
+                  Các nhãn tiện ích để gắn cho phòng và giúp sinh viên lọc phòng nhanh chóng.
+                </p>
+              </div>
+              <form onSubmit={handleCreateAmenity} className="flex gap-2.5">
                 <input
                   type="text"
                   required
-                  value={bCode}
-                  onChange={(e) => setBCode(e.target.value)}
-                  placeholder="VD: D10"
-                  className="min-h-[40px] w-full rounded-lg border border-slate-300 px-3 text-sm uppercase"
+                  value={aName}
+                  onChange={e => setAName(e.target.value)}
+                  placeholder="Nhập tên tiện ích mới..."
+                  className="min-h-[46px] flex-1 rounded-2xl border border-black/15 bg-[#f6f5f2] px-4 text-base focus:border-[#c8102e] focus:bg-white focus:outline-none"
                 />
-              </div>
-              <div className="sm:col-span-4">
-                <label className="mb-1 block text-xs font-semibold text-slate-700">
-                  Tên tòa nhà <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={bName}
-                  onChange={(e) => setBName(e.target.value)}
-                  placeholder="VD: Nhà D10"
-                  className="min-h-[40px] w-full rounded-lg border border-slate-300 px-3 text-sm"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label
-                  className="mb-1 block text-xs font-semibold text-slate-700"
-                  title="Số nhỏ sẽ xếp lên trước trên trang sinh viên"
-                >
-                  Thứ tự
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  value={bSort}
-                  onChange={(e) => setBSort(Number(e.target.value))}
-                  className="min-h-[40px] w-full rounded-lg border border-slate-300 px-2.5 text-sm"
-                />
-              </div>
-              <div className="sm:col-span-3">
                 <button
                   type="submit"
-                  className="flex min-h-[40px] w-full items-center justify-center gap-1 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-700"
+                  className="flex min-h-[46px] items-center gap-1.5 rounded-2xl bg-[#111114] px-5 text-sm font-extrabold text-white hover:bg-[#c8102e] transition"
                 >
-                  <Plus className="h-4 w-4" /> Thêm tòa
+                  <Plus className="h-4 w-4" /> Thêm
                 </button>
-              </div>
-            </form>
+              </form>
 
-            <ul className="divide-y divide-slate-100">
-              {buildings.map((b) => {
-                const countInBuilding = rooms.filter((r) => r.building_id === b.id).length;
-                const isEditing = editingBuildingId === b.id;
-                return (
-                  <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                    {isEditing ? (
-                      <div className="flex flex-1 flex-wrap items-center gap-2">
-                        <span className="font-bold text-slate-900">{b.code}</span>
-                        <input
-                          type="text"
-                          value={editBName}
-                          onChange={(e) => setEditBName(e.target.value)}
-                          className="rounded-lg border border-slate-300 px-2.5 py-1 text-sm"
-                        />
-                        <input
-                          type="number"
-                          min={1}
-                          value={editBSort}
-                          onChange={(e) => setEditBSort(Number(e.target.value))}
-                          className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-sm"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleSaveBuildingEdit(b.id)}
-                          className="rounded-lg bg-emerald-600 p-1.5 text-white"
-                          title="Lưu"
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditingBuildingId(null)}
-                          className="rounded-lg bg-slate-200 p-1.5 text-slate-700"
-                          title="Hủy"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div>
-                        <span className="font-bold text-slate-900">{b.code}</span> — {b.name}{" "}
-                        <span className="text-xs font-medium text-slate-600">
-                          • {countInBuilding} phòng • Thứ tự #{b.sort_order}
-                        </span>
-                      </div>
-                    )}
-
-                    {!isEditing && (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setModalBuildingId(b.id);
-                            setShowBulkModal(true);
-                          }}
-                          className="flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
-                        >
-                          <Plus className="h-3.5 w-3.5" /> Tạo phòng
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingBuildingId(b.id);
-                            setEditBName(b.name);
-                            setEditBSort(b.sort_order);
-                          }}
-                          className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100"
-                          title="Sửa tên / thứ tự"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleBuildingLock(b)}
-                          className={cn(
-                            "rounded-lg px-2.5 py-1 text-xs font-semibold",
-                            b.is_locked ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
-                          )}
-                        >
-                          {b.is_locked ? "Đang khóa" : "Đang mở"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteBuilding(b.id)}
-                          className="rounded-lg p-1.5 text-red-500 hover:bg-red-50"
-                          title="Xóa tòa"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    )}
-                  </li>
+              {(() => {
+                const existingNames = new Set(amenities.map(a => a.name.toLowerCase()));
+                const suggestions = ["Điều hòa", "Nóng lạnh", "Khép kín", "Giường tầng", "Wifi", "Tủ cá nhân"].filter(
+                  s => !existingNames.has(s.toLowerCase())
                 );
-              })}
-            </ul>
-          </div>
+                if (suggestions.length === 0) return null;
+                return (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-bold text-stone-600">Gợi ý nhanh:</span>
+                    {suggestions.map(s => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => createAmenityByName(s)}
+                        className="rounded-full border border-dashed border-red-400 bg-red-50 px-3.5 py-1.5 text-sm font-bold text-[#c8102e] hover:bg-red-100"
+                      >
+                        + {s}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
 
-          {/* Amenities */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Danh mục Tiện ích</h2>
-              <p className="text-xs text-slate-600">
-                Các nhãn tiện ích để gắn cho phòng và giúp sinh viên lọc phòng.
-              </p>
-            </div>
-            <form onSubmit={handleCreateAmenity} className="flex gap-2">
-              <input
-                type="text"
-                required
-                value={aName}
-                onChange={(e) => setAName(e.target.value)}
-                placeholder="Nhập tên tiện ích mới..."
-                className="min-h-[40px] flex-1 rounded-lg border border-slate-300 px-3 text-sm"
-              />
-              <button
-                type="submit"
-                className="flex min-h-[40px] items-center gap-1 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4" /> Thêm
-              </button>
-            </form>
-
-            {/* Quick Suggestions */}
-            {(() => {
-              const existingNames = new Set(amenities.map((a) => a.name.toLowerCase()));
-              const suggestions = [
-                "Điều hòa",
-                "Nóng lạnh",
-                "Khép kín",
-                "Giường tầng",
-                "Wifi",
-                "Tủ cá nhân",
-              ].filter((s) => !existingNames.has(s.toLowerCase()));
-              if (suggestions.length === 0) return null;
-              return (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs font-medium text-slate-600">Gợi ý thêm nhanh:</span>
-                  {suggestions.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => createAmenityByName(s)}
-                      className="rounded-full border border-dashed border-blue-400 bg-blue-50/60 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
-                    >
-                      + {s}
-                    </button>
-                  ))}
-                </div>
-              );
-            })()}
-
-            <div className="flex flex-wrap gap-2 pt-1">
-              {amenities.map((a) => (
-                <span
-                  key={a.id}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-800"
-                >
-                  {a.name}
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteAmenity(a.id)}
-                    className="text-slate-500 hover:text-red-600"
-                    title="Xóa tiện ích"
+              <div className="flex flex-wrap gap-2.5 pt-2">
+                {amenities.map(a => (
+                  <span
+                    key={a.id}
+                    className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-[#f6f5f2] px-4 py-2 text-sm font-bold text-[#111114]"
                   >
-                    ×
-                  </button>
-                </span>
-              ))}
+                    {a.name}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteAmenity(a.id)}
+                      className="text-stone-400 hover:text-[#c8102e] font-extrabold text-base leading-none"
+                      title="Xóa tiện ích"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
             </div>
-          </div>
           </div>
         </div>
       )}
@@ -924,6 +966,7 @@ export default function AdminRoomsPage() {
 
       {drawerRoom && (
         <RoomDetailDrawer
+          key={drawerRoom.id}
           room={drawerRoom}
           amenities={amenities}
           onClose={() => setDrawerRoom(null)}
